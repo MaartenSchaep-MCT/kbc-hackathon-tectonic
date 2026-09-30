@@ -90,6 +90,37 @@ def load_corrections(customer_id: str) -> tuple[dict, list[Correction]]:
 # --------------------------------------------------------------------------
 # Goals
 # --------------------------------------------------------------------------
+# Goals that go into the plan automatically for a stage of life, without the
+# customer having to ask. They can remove any of them, and add their own.
+STAGE_GOALS: list[tuple] = [
+    (lambda c: c["age"] < 18,
+     playbooks.GoalTemplate(
+         id="driving_licence", title="Driving licence",
+         target_rule="lessons and exams, about EUR 1,500",
+         target_fixed=1500.0, priority=1, deadline_age=16,
+         explanation="Driving lessons and exams usually cost around EUR 1,500.",
+     )),
+    (lambda c: (20 <= c["age"] <= 45
+                and c["housing"] in ("renting", "living_with_parents")
+                and c.get("mortgage_monthly", 0) == 0),
+     playbooks.GoalTemplate(
+         id="house_deposit", title="Home deposit",
+         target_rule="a EUR 50,000 deposit and costs",
+         target_fixed=50000.0, priority=2,
+         explanation="A working figure for deposit plus registration costs.",
+     )),
+]
+
+# Presets the app offers under "Add a goal". The customer can also type their own.
+CUSTOM_GOAL_PRIORITY = 3
+
+
+def _is_removed(gid: str, corrections: dict) -> bool:
+    if corrections.get(f"goal_removed:{gid}") is True:
+        return True
+    return gid == "house_deposit" and corrections.get("plans_to_buy_house") is False
+
+
 def _goal_target(template: playbooks.GoalTemplate, ctx: dict) -> float:
     if template.target_fixed:
         return float(template.target_fixed)
@@ -159,10 +190,36 @@ def _build_goals(active: list[tuple[playbooks.Playbook, float]], ctx: dict,
     """Collect goal templates from active playbooks, dedupe, then allocate the
     customer's actual savings and monthly contribution across them."""
     templates: dict[str, tuple[playbooks.GoalTemplate, str]] = {}
+    sources: dict[str, str] = {}
     for pb, _conf in active:
         for tpl in pb.goals:
             if tpl.id not in templates or tpl.priority < templates[tpl.id][0].priority:
                 templates[tpl.id] = (tpl, pb.name)
+                sources[tpl.id] = "detected"
+
+    for applies, tpl in STAGE_GOALS:
+        if tpl.id not in templates and applies(ctx):
+            templates[tpl.id] = (tpl, "Usual at your stage of life")
+            sources[tpl.id] = "stage"
+
+    # Goals the customer added themselves: custom_goal:<id> = {title, target_amount}.
+    for field_name, value in corrections.items():
+        if field_name.startswith("custom_goal:") and isinstance(value, dict):
+            gid = field_name.split(":", 1)[1]
+            templates[gid] = (playbooks.GoalTemplate(
+                id=gid, title=str(value.get("title") or "My goal"),
+                target_rule="set by you",
+                target_fixed=float(value.get("target_amount") or 0),
+                priority=CUSTOM_GOAL_PRIORITY,
+                explanation="You added this goal yourself.",
+            ), "You added this")
+            sources[gid] = "custom"
+
+    templates = {gid: v for gid, v in templates.items() if not _is_removed(gid, corrections)}
+    # A teenager's pocket money should go to their own goals, not to an adult
+    # emergency buffer.
+    if ctx["age"] < 18:
+        templates = {gid: v for gid, v in templates.items() if v[0].group != "buffer"}
 
     # Collapse alternatives. Three playbooks each asking for "a buffer" must
     # not become three goals splitting one pot of savings between them.
@@ -184,7 +241,8 @@ def _build_goals(active: list[tuple[playbooks.Playbook, float]], ctx: dict,
         else:
             target = _goal_target(tpl, ctx)
         override = corrections.get(f"goal_target:{gid}")
-        provenance = "derived"
+        source = sources.get(gid, "detected")
+        provenance = {"stage": "inferred", "custom": "declared"}.get(source, "derived")
         explanation = tpl.explanation or tpl.target_rule
         if override:
             target = float(override)
@@ -192,12 +250,17 @@ def _build_goals(active: list[tuple[playbooks.Playbook, float]], ctx: dict,
             explanation = "You set this target yourself."
         if target <= 0:
             continue
+        deadline = deadline_months = None
+        if tpl.deadline_age and ctx["age"] < tpl.deadline_age:
+            deadline_months = (tpl.deadline_age - ctx["age"]) * 12
+            deadline = _add_months(reference_date(), deadline_months).strftime("%B %Y")
         goals.append(
             Goal(
                 id=gid, title=tpl.title, target_amount=round(target, 2),
                 current_amount=0.0, monthly_contribution=0.0,
                 priority=tpl.priority, provenance=provenance, origin=origin,
-                explanation=explanation,
+                explanation=explanation, source=source,
+                deadline=deadline, deadline_months=deadline_months,
             )
         )
 
@@ -254,7 +317,7 @@ def _build_goals(active: list[tuple[playbooks.Playbook, float]], ctx: dict,
             goal.months_remaining = months
             eta = _add_months(today, months)
             goal.projected_completion = eta.strftime("%B %Y")
-            goal.on_track = months <= 120
+            goal.on_track = months <= (goal.deadline_months or 120)
         else:
             goal.months_remaining = None
             goal.projected_completion = None
@@ -354,13 +417,10 @@ def _build_timeline(ctx: dict, customer: dict, goals: list[Goal],
                 goal_id="house_deposit",
             ))
 
-    if corrections.get("plans_to_buy_house") is False:
-        out.append(Milestone(
-            year=today.year, date_label=str(today.year),
-            title="Home purchase removed from your plan",
-            detail="You told us buying is not your plan. We stopped suggesting it.",
-            kind="achieved", confidence=1.0, provenance="declared",
-        ))
+    # Retirement is not a useful line on a teenager's timeline.
+    if ctx["age"] < 18:
+        out.sort(key=lambda m: (m.year, 0 if m.kind == "achieved" else 1))
+        return out
 
     out.append(Milestone(
         year=retirement["retirement_year"], date_label=str(retirement["retirement_year"]),
@@ -504,7 +564,9 @@ def build_twin(customer: dict, feature_state: dict, previous: dict | None = None
     active: list[tuple[playbooks.Playbook, float]] = []
     for sig in signal_results:
         for pb in playbooks.BY_SIGNAL.get(sig["id"], []):
-            if pb.suppressed_by and corrections_map.get(pb.suppressed_by) is False:
+            removed_all_goals = pb.goals and all(
+                _is_removed(g.id, corrections_map) for g in pb.goals)
+            if (pb.suppressed_by and corrections_map.get(pb.suppressed_by) is False) or removed_all_goals:
                 suppression_notes.append(
                     f"The '{pb.name}' guidance is switched off at your request."
                 )

@@ -1,535 +1,500 @@
 /* ==========================================================================
-   CUSTOMER APP - a mobile banking experience, not an admin dashboard.
+   CUSTOMER APP - KBC Mobile with Future Me.
 
-   Rendered inside a 390x844 phone frame on desktop, full-bleed on a real
-   phone. Four sections behind a bottom navigation, exactly as KBC Mobile
-   organises itself: Home, Goals, Future Me, My Twin.
+   Three tabs, like KBC Mobile keeps it simple:
+     Start      - what today's app shows: accounts, recent transactions
+     Future Me  - the timeline of what is coming, and "what if"
+     About me   - what we think we know, and the customer's corrections
+
+   The phone sits next to a small presenter panel with the demo events.
    ========================================================================== */
 
 import { api, waitForEvent } from "../api.js";
-import {
-  ConfidenceMeter, EvidenceList, Icon, KbcBottomNavigation, KbcCard,
-  KbcFormField, KbcGoalCard, KbcInfoBanner, KbcPrimaryButton, KbcProgressBar,
-  KbcSecondaryButton, KbcSegmented, KbcStatusChip, KbcTimeline, KbcTwinInsight,
-  PipelineStages, ProvenanceChip, toast,
-} from "../components.js";
-import { escapeHtml as h, money, pct } from "../format.js";
+import { Icon, PipelineStages, toast } from "../components.js";
+import { escapeHtml as h, initials, money, pct } from "../format.js";
 
 const NAV = [
-  { id: "home",   label: "Home",      icon: "home" },
-  { id: "goals",  label: "Goals",     icon: "target" },
+  { id: "start",  label: "Start",     icon: "wallet" },
   { id: "future", label: "Future Me", icon: "route" },
-  { id: "twin",   label: "My Twin",   icon: "sliders" },
+  { id: "about",  label: "About me",  icon: "user" },
 ];
 
-const DEMO_ICONS = {
-  "first-salary": Icon.euro,
-  "crib-purchase": Icon.crib,
-  "large-expense": Icon.receipt,
-  "savings-contribution": Icon.piggy,
-};
+const WHAT_IF_DEFAULT = { extra: 0, sabbatical: false };
+const SABBATICAL_MONTHS = 6;
+const YEARS_IN_RETIREMENT = 20;
 
 export const customerState = {
   customerId: null,
-  tab: "home",
-  whyOpen: false,
-  sheet: null,          // null | "twin"
-  pipeline: null,       // { stages, activeIndex, complete, label }
-  changed: [],          // Twin fields that changed on the last event
+  tab: "future",
   busy: false,
+  whatIf: { ...WHAT_IF_DEFAULT },
+  moves: {},            // goal id -> months moved, "retirement" -> EUR/month, after the last change
+  newTitles: [],        // timeline milestones that appeared with the last change
+  lastEvent: null,      // { label, ms, version, stages }
+  whyOpen: false,
+  stagesOpen: false,
 };
+
+export function resetCustomerState() {
+  customerState.whatIf = { ...WHAT_IF_DEFAULT };
+  customerState.moves = {};
+  customerState.newTitles = [];
+  customerState.lastEvent = null;
+  customerState.whyOpen = false;
+}
+
+/* ==========================================================================
+   Future maths - mirrors twin_engine._build_goals and _retirement_projection
+   so a "what if" preview gives the same dates the engine would.
+   ========================================================================== */
+function project(twin, whatIf = WHAT_IF_DEFAULT) {
+  const d = twin.derived_features;
+  const r = d.retirement || {};
+  const pause = whatIf.sabbatical ? SABBATICAL_MONTHS : 0;
+  const pot = (d.monthly_savings_contribution || 0) + whatIf.extra;
+
+  const open = twin.goals.filter((g) =>
+    g.id !== "retirement_readiness" && g.current_amount < g.target_amount);
+  const weightTotal = open.reduce((sum, g) => sum + 1 / g.priority, 0) || 1;
+
+  const goals = {};
+  for (const g of twin.goals) {
+    if (g.id === "retirement_readiness") continue;
+    if (g.current_amount >= g.target_amount) {
+      goals[g.id] = { reached: true, months: 0 };
+      continue;
+    }
+    const monthly = pot * ((1 / g.priority) / weightTotal);
+    goals[g.id] = monthly > 0
+      ? { months: Math.min(600, Math.ceil((g.target_amount - g.current_amount) / monthly)) + pause, monthly }
+      : { months: null, monthly: 0 };
+  }
+
+  const years = r.years_to_retirement || 0;
+  const baseMonthly = d.monthly_savings_contribution || 0;
+  const capital = (r.projected_capital || 0)
+    + whatIf.extra * 12 * years
+    - (whatIf.sabbatical ? baseMonthly * SABBATICAL_MONTHS : 0);
+  const income = r.income_basis || 1;
+  const monthlyIncome = (r.estimated_statutory_pension || 0) + Math.max(0, capital) / (12 * YEARS_IN_RETIREMENT);
+  const retirement = {
+    year: r.retirement_year,
+    age: r.target_retirement_age,
+    ageSource: r.retirement_age_source,
+    yearsLeft: years,
+    monthlyIncome,
+    incomeShare: monthlyIncome / income,
+    targetShare: (r.desired_monthly_income || 0) / income,
+  };
+  return { goals, retirement };
+}
+
+function monthLabel(ref, months) {
+  const date = new Date(ref);
+  date.setDate(1);
+  date.setMonth(date.getMonth() + months);
+  return date.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+}
+
+const euro = (text) => String(text || "").replace(/EUR\s?/g, "€");
+
+function moveLabel(months) {
+  if (!months) return "";
+  const n = Math.abs(months);
+  const unit = n === 1 ? "month" : "months";
+  return months < 0 ? `${n} ${unit} sooner` : `${n} ${unit} later`;
+}
 
 /* ==========================================================================
    Render
    ========================================================================== */
 export function renderCustomer(ctx) {
-  const { personas, twin, customer, meta } = ctx;
-  if (!twin) return `<div class="page"><div class="skeleton" style="height:260px"></div></div>`;
-
+  if (!ctx.twin) return `<div class="page"><div class="skeleton" style="height:260px"></div></div>`;
   return `
   <div class="page">
-    <div class="page__inner">
-      <div class="phone-stage">
-        ${renderPhone(ctx)}
-        <aside class="stack" style="flex:1;min-width:300px;max-width:440px">
-          ${renderPersonaPicker(personas, customerState.customerId)}
-          ${renderDemoControls(meta, twin)}
-          ${renderPipelineCard()}
-          ${renderTierNote(meta, twin)}
-        </aside>
-      </div>
+    <div class="phone-stage">
+      ${renderPhone(ctx)}
+      ${renderPresenter(ctx)}
     </div>
   </div>`;
 }
 
 function renderPhone(ctx) {
-  const { twin, customer } = ctx;
-  const name = customer ? customer.customer.first_name : "";
+  const name = ctx.customer?.customer?.first_name || "";
   return `
   <div class="phone">
-    <div class="phone__statusbar">
-      <span>09:41</span>
-      <span>KBC Mobile &middot; prototype</span>
-      <span>&#9679;&#9679;&#9679;</span>
-    </div>
-    <div class="phone__header">
-      <div class="row row--between">
-        <div>
-          <div class="t-micro" style="color:var(--kbc-primary-150)">Good morning</div>
-          <div class="t-h2">${h(name)}</div>
-        </div>
-        ${KbcStatusChip({ label: `Twin v${twin.version}`, tone: "solid" })}
-      </div>
+    <div class="phone__statusbar"><span>09:41</span></div>
+    <div class="m-top">
+      <span class="m-avatar">${h(initials(`${name} ${ctx.customer?.customer?.last_name || ""}`))}</span>
+      <span class="m-kate">How can I help you? <b>${Icon.kate} Kate</b></span>
+      <span class="m-bell">${Icon.bell}</span>
     </div>
     <div class="phone__scroll" id="phone-scroll">
       ${renderTab(ctx)}
     </div>
-    ${KbcBottomNavigation({ items: NAV, active: customerState.tab })}
-    ${customerState.sheet === "twin" ? renderEditSheet(ctx) : ""}
+    <nav class="phone__nav" role="tablist" aria-label="App sections">
+      ${NAV.map((item) => `
+        <button role="tab" data-tab="${item.id}" aria-selected="${item.id === customerState.tab}">
+          ${Icon[item.icon]}<span>${h(item.label)}</span>
+        </button>`).join("")}
+    </nav>
   </div>`;
 }
 
 function renderTab(ctx) {
   switch (customerState.tab) {
-    case "goals":  return renderGoalsTab(ctx);
-    case "future": return renderFutureTab(ctx);
-    case "twin":   return renderTwinTab(ctx);
-    default:       return renderHomeTab(ctx);
+    case "start": return renderStart(ctx);
+    case "about": return renderAbout(ctx);
+    default:      return renderFuture(ctx);
   }
 }
 
 /* ==========================================================================
-   Home
+   Start - today's KBC Mobile, looking backwards
    ========================================================================== */
-function renderHomeTab({ twin, customer, meta }) {
+function renderStart({ twin, customer, meta }) {
   const d = twin.derived_features;
-  const narrative = twin.narrative;
-  const topGoal = twin.goals[0];
-  const changedPhase = customerState.changed.includes("life_phase");
-
+  const txns = (customer?.transactions || []).slice(0, 4);
   return `
-    ${KbcTwinInsight(twin, { expanded: customerState.whyOpen })}
-
-    ${narrative ? KbcCard({
-      label: "What this means",
-      body: `
-        <div class="t-body t-bold" style="margin-bottom:var(--space-2)">${h(narrative.headline)}</div>
-        <p class="t-body">${h(narrative.body)}</p>
-        <div class="row" style="margin-top:var(--space-4);gap:var(--space-2)">
-          ${KbcStatusChip({
-            label: narrative.generator === "claude" ? `Written by Claude` : "Written by template",
-            tone: narrative.generator === "claude" ? "accent" : "outline",
-          })}
-          <span class="kbc-meta">Wording only &mdash; every figure was calculated before this text existed</span>
-        </div>`,
-    }) : ""}
-
-    ${KbcCard({
-      label: "This month",
-      body: `
-        <div class="grid grid--2" style="gap:var(--space-4)">
-          ${miniStat("Money in", money(d.monthly_income), "derived")}
-          ${miniStat("Spending", money(d.monthly_spend_core), "derived")}
-          ${miniStat("Left over", money(d.monthly_surplus), "derived")}
-          ${miniStat("Buffer", `${d.emergency_fund_months} mo`, "derived")}
-        </div>`,
-    })}
-
-    ${topGoal ? KbcCard({
-      label: "Your main goal",
-      title: topGoal.title,
-      body: KbcGoalCard(topGoal),
-    }) : ""}
-
-    ${renderPossibleChanges(twin)}
-    ${renderActions(twin)}
-    ${renderRisks(twin)}
-
-    ${KbcInfoBanner({
-      tone: "neutral",
-      text: meta?.synthetic_data_notice || "Synthetic data.",
-    })}`;
-}
-
-function miniStat(label, value, provenance) {
-  return `<div>
-    <div class="kbc-card__label">${h(label)}</div>
-    <div class="t-h2 t-num" style="margin:2px 0">${h(value)}</div>
-    ${ProvenanceChip(provenance, { short: true })}
-  </div>`;
-}
-
-function renderPossibleChanges(twin) {
-  const changes = twin.household.possible_changes || [];
-  if (!changes.length) return "";
-  return changes.map((change) => KbcCard({
-    variant: "kbc-card--tinted",
-    label: "Something we are not sure about",
-    body: `
-      <div class="row row--between" style="align-items:flex-start">
-        <div style="min-width:0">
-          <div class="t-body t-bold">${h(change.label)}</div>
-          <div class="row" style="gap:var(--space-2);margin-top:var(--space-2)">
-            ${ConfidenceMeter(change.confidence, { warn: true })}
-            <span class="t-small t-bold">${pct(change.confidence)} confident</span>
-            ${ProvenanceChip("inferred", { short: true })}
-          </div>
-        </div>
+    <div class="m-accounts">
+      <div class="m-account m-account--blue">
+        <span class="m-account__icon">${Icon.wallet}</span>
+        <span class="m-account__name">Savings account</span>
+        <span class="m-account__amount">${money(d.savings_balance)}</span>
       </div>
-      <p class="t-small t-muted" style="margin-top:var(--space-3)">
-        This is an assumption from your spending. It is not a fact, and we have
-        not acted on it beyond what you can see here.
-      </p>
-      ${EvidenceList(change.evidence)}
-      ${change.expected_financial_impact ? `
-        <div class="kbc-meta" style="margin-top:var(--space-3)">
-          If it is right: ${h(change.expected_financial_impact)}
-        </div>` : ""}
-      <div class="row" style="margin-top:var(--space-4);gap:var(--space-2)">
-        ${KbcSecondaryButton({ label: "That's not right", attrs: `data-correct="${h(change.key)}" data-value="false"`, small: true })}
-        ${KbcStatusChip({ label: "Your answer overrides us", tone: "outline" })}
-      </div>`,
-  })).join("");
-}
-
-function renderActions(twin) {
-  const actions = twin.playbooks.flatMap((p) =>
-    p.actions.map((a) => ({ ...a, playbook: p.name, confidence: p.confidence })));
-  if (!actions.length) return "";
-  return KbcCard({
-    label: "What would help most",
-    body: `
-      <div class="stack stack--sm">
-        ${actions.slice(0, 4).map((a) => `
-          <div style="padding:var(--space-3) 0;border-bottom:1px solid var(--kbc-divider)">
-            <div class="t-small t-bold">${h(a.title)}</div>
-            <div class="kbc-meta" style="margin-top:2px">${h(a.why)}</div>
-            ${a.customer_benefit ? `
-              <div class="t-small" style="margin-top:var(--space-2);color:var(--kbc-success)">
-                ${h(a.customer_benefit)}
-              </div>` : ""}
-          </div>`).join("")}
+      <div class="m-account">
+        <span class="m-account__icon">${Icon.euro}</span>
+        <span class="m-account__name">Left over this month</span>
+        <span class="m-account__amount">${money(d.monthly_surplus)}</span>
       </div>
-      <div class="kbc-meta" style="margin-top:var(--space-3)">
-        These are about your goals. Nothing here is a product offer.
-      </div>`,
-  });
-}
+    </div>
 
-function renderRisks(twin) {
-  if (!twin.risks.length) return "";
-  return KbcCard({
-    label: "Worth knowing",
-    body: twin.risks.map((r) => `
-      <div class="kbc-banner kbc-banner--${r.severity === "high" ? "danger" : "warning"}"
-           style="margin-bottom:var(--space-2)">
-        <div>
-          <div class="t-small t-bold">${h(r.label)}</div>
-          ${EvidenceList(r.evidence)}
-          ${r.mitigation ? `<div class="kbc-meta" style="margin-top:var(--space-2)">${h(r.mitigation)}</div>` : ""}
-        </div>
-      </div>`).join(""),
-  });
+    <ul class="m-txns">
+      ${txns.map((t) => `
+        <li>
+          <span class="m-txns__date">${h(t.timestamp.slice(8, 10))}/${h(t.timestamp.slice(5, 7))}</span>
+          <span class="m-txns__name">${h(t.merchant)}</span>
+          <span class="m-txns__amount">${t.amount > 0 ? "+" : ""}${money(t.amount)}</span>
+        </li>`).join("")}
+    </ul>
+
+    <h2 class="m-section">For you</h2>
+    <button class="m-tip m-tip--hero" data-tab="future">
+      <span class="m-tip__icon">${Icon.route}</span>
+      <span>
+        <span class="m-tip__kicker">New: Future Me</span>
+        <span class="m-tip__text">${h(headline(twin, meta, WHAT_IF_DEFAULT))}</span>
+        <span class="m-link">See your future ${Icon.chevron}</span>
+      </span>
+    </button>`;
 }
 
 /* ==========================================================================
-   Goals
+   Future Me - the timeline
    ========================================================================== */
-function renderGoalsTab({ twin }) {
-  const household = twin.household;
+function renderFuture(ctx) {
+  const { twin, customer } = ctx;
+  const name = customer?.customer?.first_name || "";
   return `
-    ${KbcCard({
-      label: "Progress towards your goals",
-      title: pct(twin.progress_score),
-      body: `
-        ${KbcProgressBar({ value: twin.progress_score, large: true })}
-        <div class="grid grid--2" style="margin-top:var(--space-4);gap:var(--space-3)">
-          ${Object.entries(twin.progress_breakdown).map(([key, value]) => `
-            <div>
-              <div class="kbc-meta">${h(key.replace(/_/g, " "))}</div>
-              ${KbcProgressBar({ value })}
-            </div>`).join("")}
-        </div>
-        <div class="kbc-meta" style="margin-top:var(--space-4)">
-          This is the only score that matters here. It measures your progress,
-          not what has been sold to you.
-        </div>`,
-    })}
+    <div class="fm-hello">
+      <div class="fm-hello__kicker">Future Me</div>
+      <div class="fm-hello__title">Hi ${h(name)}, here's what's ahead</div>
+    </div>
+    ${renderNoticed(twin)}
+    <div id="fm-live">${renderLive(ctx)}</div>`;
+}
 
-    ${twin.goals.length ? KbcCard({
-      label: "Your goals",
-      body: twin.goals.map(KbcGoalCard).join(""),
-    }) : KbcInfoBanner({ text: "No goals are active yet.", tone: "neutral" })}
+/** Everything that moves while the "what if" slider is dragged. */
+function renderLive({ twin, meta }) {
+  const whatIf = customerState.whatIf;
+  const previewing = whatIf.extra > 0 || whatIf.sabbatical;
+  return `
+    <section class="fm-hero ${previewing ? "fm-hero--preview" : ""}">
+      <div class="fm-hero__text">${h(headline(twin, meta, whatIf))}</div>
+      ${previewing ? `<div class="fm-hero__note">Preview. Nothing is saved or moved.</div>` : ""}
+    </section>
+    ${renderWhatIf()}
+    ${renderTimeline(twin, meta)}`;
+}
 
-    ${household.type !== "single" ? KbcCard({
-      label: "Household",
-      title: householdLabel(household),
-      body: `
-        <div class="fact-list">
-          <div class="fact"><span class="fact__label">Household type</span>
-            <span class="fact__value">${h(household.type)}</span></div>
-          ${household.partner_name ? `
-            <div class="fact"><span class="fact__label">Partner</span>
-              <span class="fact__value">${h(household.partner_name)}</span></div>` : ""}
-          <div class="fact"><span class="fact__label">Children</span>
-            <span class="fact__value">${household.children}</span></div>
-          <div class="fact"><span class="fact__label">Housing</span>
-            <span class="fact__value">${h(String(household.housing).replace(/_/g, " "))}</span></div>
+function headline(twin, meta, whatIf) {
+  const p = project(twin, whatIf);
+  const ref = meta?.reference_date;
+  const next = twin.goals
+    .filter((g) => p.goals[g.id] && !p.goals[g.id].reached && p.goals[g.id].months)
+    .sort((a, b) => p.goals[a.id].months - p.goals[b.id].months)[0];
+  // Close to retirement, that is the question that matters most.
+  if (next && p.retirement.yearsLeft > 10) {
+    return `At this pace, your ${next.title.toLowerCase()} of ${money(next.target_amount)} is ready in ${monthLabel(ref, p.goals[next.id].months)}.`;
+  }
+  return `Retirement in ${p.retirement.year}: you're on track for ${money(p.retirement.monthlyIncome)} a month, ${pct(p.retirement.incomeShare)} of your current income.`;
+}
+
+/** Guesses the customer has not answered yet. */
+function openGuesses(twin) {
+  return (twin.household.possible_changes || [])
+    .filter((c) => findCorrection(twin, c.key) === undefined);
+}
+
+function renderNoticed(twin) {
+  // Below the threshold we keep quiet in the app; it stays visible under "About me".
+  const change = openGuesses(twin).find((c) => c.key === "family_expansion" && c.confidence >= 0.5);
+  if (!change) return "";
+  return `
+    <section class="fm-noticed">
+      <div class="fm-noticed__head">${Icon.kate}<span>Kate noticed something</span></div>
+      <div class="fm-noticed__title">Are you expecting a baby?</div>
+      <p class="fm-noticed__text">
+        Some recent purchases look like it. We're ${pct(change.confidence)} sure, so it's
+        only a guess. We've made room for it in your plan below
+        (${h(euro(change.expected_financial_impact).split(",")[0].toLowerCase())}). Is that right?
+      </p>
+      <div class="fm-noticed__actions">
+        <button class="kbc-btn kbc-btn--primary kbc-btn--sm" data-correct="${h(change.key)}" data-value="true">Yes, that's right</button>
+        <button class="kbc-btn kbc-btn--secondary kbc-btn--sm" data-correct="${h(change.key)}" data-value="false">No, remove it</button>
+      </div>
+    </section>`;
+}
+
+function renderWhatIf() {
+  const w = customerState.whatIf;
+  return `
+    <section class="fm-whatif">
+      <div class="fm-whatif__head">
+        <span class="fm-whatif__title">What if…</span>
+        ${w.extra || w.sabbatical ? `<button class="m-link" data-whatif-reset="1">Reset</button>` : ""}
+      </div>
+      <label class="fm-slider">
+        <span class="fm-slider__label">I save more each month
+          <b>${w.extra ? `+${money(w.extra)}` : "€0"}</b></span>
+        <input type="range" min="0" max="500" step="25" value="${w.extra}" data-whatif-extra="1"
+               style="--fill:${(w.extra / 500) * 100}%" aria-label="Extra saving per month">
+      </label>
+      <button class="fm-toggle" data-whatif-sabbatical="1" aria-pressed="${w.sabbatical}">
+        <span class="fm-toggle__box">${w.sabbatical ? Icon.check : ""}</span>
+        I take a ${SABBATICAL_MONTHS}-month sabbatical
+      </button>
+    </section>`;
+}
+
+function renderTimeline(twin, meta) {
+  const ref = meta?.reference_date;
+  const whatIf = customerState.whatIf;
+  const base = project(twin);
+  const now = project(twin, whatIf);
+  const goalsById = Object.fromEntries(twin.goals.map((g) => [g.id, g]));
+
+  const achieved = twin.future_timeline.filter((m) => m.kind === "achieved");
+  const seen = new Set();
+  const ahead = twin.future_timeline.filter((m) => {
+    if (m.kind === "achieved") return false;
+    if (!m.goal_id) return true;
+    if (seen.has(m.goal_id)) return false;
+    seen.add(m.goal_id);
+    return true;
+  });
+
+  const items = ahead.map((m) => {
+    const goal = goalsById[m.goal_id];
+    const isRetirement = /^Retirement/.test(m.title);
+    const assumption = twin.future_timeline.some((x) =>
+      x.goal_id && x.goal_id === m.goal_id && x.provenance === "inferred");
+
+    if (isRetirement) {
+      const r = now.retirement;
+      const moved = Math.round(r.monthlyIncome - base.retirement.monthlyIncome);
+      const eventMove = customerState.moves.retirement;
+      return timelineItem({
+        date: String(r.year),
+        icon: Icon.sun,
+        title: `Retire at ${r.age}`,
+        detail: `Expected income ${money(r.monthlyIncome)} a month: ${pct(r.incomeShare)} of what you earn now. The usual aim is ${pct(r.targetShare)}.`,
+        progress: Math.min(1, r.incomeShare / (r.targetShare || 1)),
+        warn: r.incomeShare < r.targetShare,
+        badge: moved ? `${moved > 0 ? "+" : "-"}${money(Math.abs(moved))} a month` : "",
+        eventBadge: eventMove ? `${eventMove > 0 ? "+" : "-"}${money(Math.abs(eventMove))} a month` : "",
+        eventGood: eventMove > 0,
+        tag: r.ageSource === "assumed" ? `Age ${r.age} is our guess` : "",
+      });
+    }
+
+    if (goal) {
+      const g = now.goals[goal.id] || {};
+      const b = base.goals[goal.id] || {};
+      const delta = g.months != null && b.months != null ? g.months - b.months : 0;
+      const eventMove = customerState.moves[goal.id];
+      return timelineItem({
+        date: g.months ? monthLabel(ref, g.months) : "No date yet",
+        icon: goal.id === "house_deposit" ? Icon.house : Icon.shield,
+        title: `${goal.title}: ${money(goal.target_amount)}`,
+        detail: g.months
+          ? `${money(goal.current_amount)} saved. Putting aside ${money(g.monthly)} a month.`
+          : "Nothing is being put aside for this yet.",
+        progress: goal.current_amount / goal.target_amount,
+        badge: moveLabel(delta),
+        eventBadge: moveLabel(eventMove),
+        eventGood: eventMove < 0,
+        tag: assumption ? "We guessed you want this" : "",
+      });
+    }
+
+    return timelineItem({
+      date: m.date_label, icon: Icon.route, title: euro(m.title), detail: euro(m.detail),
+      tag: m.provenance === "inferred" ? "Our guess" : "",
+    });
+  });
+
+  return `
+    <h2 class="m-section">Your timeline</h2>
+    <ol class="fm-tl">
+      <li class="fm-tl__item fm-tl__item--now">
+        <span class="fm-tl__dot"></span>
+        <div class="fm-tl__date">Today</div>
+        ${achieved.length ? `
+          <div class="fm-done">
+            ${achieved.map((m) => `
+              <span class="fm-done__chip ${customerState.newTitles.includes(m.title) ? "fm-done__chip--new" : ""}">
+                ${Icon.check}${h(m.title)}</span>`).join("")}
+          </div>` : `<div class="fm-tl__detail">Your starting point.</div>`}
+      </li>
+      ${items.join("")}
+    </ol>`;
+}
+
+function timelineItem({ date, icon, title, detail, progress, warn, badge, eventBadge, eventGood = true, tag }) {
+  return `
+    <li class="fm-tl__item">
+      <span class="fm-tl__dot"></span>
+      <div class="fm-tl__date">${h(date)}
+        ${badge ? `<span class="fm-badge fm-badge--preview">${h(badge)}</span>` : ""}
+        ${!badge && eventBadge ? `<span class="fm-badge ${eventGood ? "fm-badge--good" : "fm-badge--bad"}">${h(eventBadge)}</span>` : ""}
+      </div>
+      <div class="fm-card">
+        <span class="fm-card__icon">${icon}</span>
+        <div class="fm-card__body">
+          <div class="fm-card__title">${h(title)}</div>
+          <div class="fm-card__detail">${h(detail)}</div>
+          ${progress != null ? `
+            <div class="fm-bar"><span class="${warn ? "fm-bar__warn" : ""}"
+              style="width:${Math.max(2, Math.min(100, progress * 100))}%"></span></div>` : ""}
+          ${tag ? `<div class="fm-card__tag">${h(tag)}</div>` : ""}
         </div>
-        <div class="row" style="margin-top:var(--space-3);gap:var(--space-2)">
-          ${ProvenanceChip("declared")}
-          <span class="kbc-meta">You gave us these, so we treat them as facts</span>
+      </div>
+    </li>`;
+}
+
+/* ==========================================================================
+   About me - what we think, and the customer's answers
+   ========================================================================== */
+function renderAbout({ twin, meta }) {
+  const phase = twin.life_phase;
+  const phases = meta?.life_phases || {};
+  const r = twin.derived_features.retirement || {};
+  const household = twin.household;
+  const houseGoal = twin.goals.find((g) => g.id === "house_deposit");
+  const plansHouse = findCorrection(twin, "plans_to_buy_house");
+  const family = findCorrection(twin, "family_expansion");
+  const guesses = openGuesses(twin);
+
+  return `
+    <div class="fm-hello">
+      <div class="fm-hello__kicker">About me</div>
+      <div class="fm-hello__title">Your future is built on this</div>
+      <p class="fm-hello__sub">Some of it you told us, some of it is our guess. Your answers always win.</p>
+    </div>
+
+    <section class="m-list">
+      <div class="m-row">
+        <div class="m-row__main">
+          <div class="m-row__label">Stage of life</div>
+          <select class="m-select" data-field="life_phase" aria-label="Stage of life">
+            ${Object.entries(phases).map(([value, label]) => `
+              <option value="${h(value)}" ${value === phase.value ? "selected" : ""}>${h(label)}</option>`).join("")}
+          </select>
+          <div class="m-row__hint">
+            ${phase.provenance === "declared" ? "You told us this." : `Our guess from your transactions (${pct(phase.confidence)} sure).`}
+            ${phase.provenance !== "declared" ? `<button class="m-link" data-toggle="why">${customerState.whyOpen ? "Hide why" : "Why?"}</button>` : ""}
+          </div>
+          ${customerState.whyOpen ? `
+            <ul class="m-why">${(phase.evidence || []).map((e) => `<li>${h(euro(e.text))}</li>`).join("")}</ul>` : ""}
         </div>
-        ${twin.goals.some((g) => g.id.includes("shared") || g.id.includes("family")) ? `
-          <div class="kbc-banner kbc-banner--success" style="margin-top:var(--space-4)">
-            <div class="t-small">Shared goals are counted once for the household,
-            not twice for two people.</div>
-          </div>` : ""}`,
-    }) : ""}`;
+      </div>
+      <div class="m-row">
+        <div class="m-row__main">
+          <div class="m-row__label">Household</div>
+          <div class="m-row__value">${h(householdLabel(household))}</div>
+        </div>
+      </div>
+    </section>
+
+    <h2 class="m-section">Your plans</h2>
+    <section class="m-list">
+      ${yesNoRow("Buy a home", "plans_to_buy_house", plansHouse,
+        plansHouse === undefined ? "We guessed this from how you save." : "You told us.")}
+      ${yesNoRow("Grow our family", "family_expansion", family,
+        family === undefined ? "Only you can tell us this." : "You told us.")}
+      <div class="m-row">
+        <div class="m-row__main">
+          <div class="m-row__label">Retire at</div>
+          <div class="m-row__hint">${r.retirement_age_source === "declared" ? "You told us." : "65 is our guess."}</div>
+        </div>
+        <div class="m-stepper">
+          <button data-step="-1" aria-label="Retire a year earlier">${Icon.minus}</button>
+          <span>${r.target_retirement_age}</span>
+          <button data-step="1" aria-label="Retire a year later">${Icon.plus}</button>
+        </div>
+      </div>
+      ${houseGoal ? `
+        <div class="m-row">
+          <div class="m-row__main">
+            <div class="m-row__label">Home deposit I need</div>
+            <div class="m-row__hint">${houseGoal.provenance === "declared" ? "You set this." : "Our estimate."}</div>
+          </div>
+          <div class="m-amount">
+            <span>€</span>
+            <input type="number" min="1000" step="1000" value="${Math.round(houseGoal.target_amount)}"
+                   data-goal-target="${h(houseGoal.id)}" aria-label="Home deposit target">
+          </div>
+        </div>` : ""}
+    </section>
+
+    ${guesses.length ? `
+      <h2 class="m-section">Things we're not sure about</h2>
+      <section class="m-list">
+        ${guesses.map((c) => `
+          <div class="m-row">
+            <div class="m-row__main">
+              <div class="m-row__label">${h(c.label)}</div>
+              <div class="m-row__hint">${pct(c.confidence)} sure. ${c.confidence < 0.5 ? "Too unsure to act on." : "Part of your plan until you say otherwise."}</div>
+            </div>
+            <button class="kbc-btn kbc-btn--secondary kbc-btn--sm" data-correct="${h(c.key)}" data-value="false">Not right</button>
+          </div>`).join("")}
+      </section>` : ""}
+
+    ${twin.corrections.length ? `
+      <button class="m-link m-link--center" data-clear-corrections="1">Undo my ${twin.corrections.length} answer${twin.corrections.length > 1 ? "s" : ""}</button>` : ""}`;
+}
+
+function yesNoRow(label, field, value, hint) {
+  return `
+    <div class="m-row">
+      <div class="m-row__main">
+        <div class="m-row__label">${h(label)}</div>
+        <div class="m-row__hint">${h(hint)}</div>
+      </div>
+      <div class="segmented" role="group" data-segmented="${h(field)}">
+        <button type="button" data-value="true" aria-pressed="${value === true}">Yes</button>
+        <button type="button" data-value="false" aria-pressed="${value === false}">No</button>
+      </div>
+    </div>`;
 }
 
 function householdLabel(household) {
-  const parts = [household.type.replace(/_/g, " ")];
+  const parts = [];
+  parts.push(household.partner_name ? `With ${household.partner_name.split(" ")[0]}` : "Just me");
   if (household.children) parts.push(`${household.children} child${household.children > 1 ? "ren" : ""}`);
-  return parts.join(", ");
-}
-
-/* ==========================================================================
-   Future Me
-   ========================================================================== */
-function renderFutureTab({ twin }) {
-  const retirement = twin.derived_features.retirement || {};
-  const changedYears = customerState.changed.includes("future_timeline")
-    ? twin.future_timeline.map((m) => m.year) : [];
-  return `
-    ${KbcCard({
-      label: "Future Me",
-      title: "Where this is heading",
-      body: `
-        <p class="t-small t-muted" style="margin-bottom:var(--space-4)">
-          Built from what we can see, what you have told us, and what we assume.
-          Dashed markers are assumptions, not plans.
-        </p>
-        ${KbcTimeline(twin.future_timeline, { changedYears })}`,
-    })}
-
-    ${KbcCard({
-      label: "Retirement projection",
-      title: `Age ${retirement.target_retirement_age} in ${retirement.retirement_year}`,
-      action: ProvenanceChip(retirement.retirement_age_source === "declared" ? "declared" : "derived"),
-      body: `
-        <div class="fact-list">
-          ${fact("Income you would want", money(retirement.desired_monthly_income) + " / month")}
-          ${fact("Estimated state pension", money(retirement.estimated_statutory_pension) + " / month")}
-          ${fact("Monthly gap to close", money(retirement.monthly_income_gap) + " / month")}
-          ${fact("Capital needed", money(retirement.capital_needed))}
-          ${fact("Projected at your pace", money(retirement.projected_capital))}
-          ${fact("Shortfall", money(retirement.projected_shortfall))}
-        </div>
-        <div style="margin-top:var(--space-4)">
-          <div class="kbc-card__label">Readiness</div>
-          ${KbcProgressBar({
-            value: retirement.readiness,
-            tone: retirement.readiness >= 0.9 ? "success" : retirement.readiness < 0.5 ? "warning" : "",
-            large: true,
-          })}
-          <div class="kbc-meta" style="margin-top:var(--space-2)">${pct(retirement.readiness)} of what you would need</div>
-        </div>
-        ${retirement.retirement_age_source === "assumed" ? `
-          <div class="kbc-banner kbc-banner--warning" style="margin-top:var(--space-4)">
-            <div class="t-small">
-              We assumed you retire at ${retirement.target_retirement_age}. That is
-              our guess, and it changes everything above.
-              <button class="kbc-btn kbc-btn--secondary kbc-btn--sm" data-open-sheet="twin"
-                      style="margin-top:var(--space-2)">Set your own age</button>
-            </div>
-          </div>` : ""}
-        <details style="margin-top:var(--space-4)">
-          <summary class="t-small t-bold" style="cursor:pointer">What this projection assumes</summary>
-          <ul class="evidence" style="margin-top:var(--space-2)">
-            ${(retirement.assumptions || []).map((a) => `<li><span>${h(a)}</span></li>`).join("")}
-          </ul>
-        </details>`,
-    })}`;
-}
-
-const fact = (label, value) =>
-  `<div class="fact"><span class="fact__label">${h(label)}</span>
-     <span class="fact__value">${h(value)}</span></div>`;
-
-/* ==========================================================================
-   My Twin - transparency + corrections
-   ========================================================================== */
-function renderTwinTab({ twin }) {
-  return `
-    ${KbcCard({
-      label: "Your Twin",
-      title: "Everything we think we know",
-      action: KbcPrimaryButton({ label: "Edit my Twin", attrs: 'data-open-sheet="twin"', small: true }),
-      body: `
-        <div class="kbc-banner" style="margin-bottom:var(--space-4)">
-          <div class="t-small">
-            <strong>Your corrections override automated assumptions.</strong>
-            Permanently, and across every KBC channel.
-          </div>
-        </div>
-        <div class="grid grid--2" style="gap:var(--space-2)">
-          ${["observed", "derived", "inferred", "declared"].map((p) => `
-            <div class="row" style="gap:var(--space-2)">
-              ${ProvenanceChip(p)}
-            </div>`).join("")}
-        </div>
-        <div class="kbc-meta" style="margin-top:var(--space-3)">
-          Nothing in this app is shown without one of these four labels.
-        </div>`,
-    })}
-
-    ${twin.corrections.length ? KbcCard({
-      label: "Your corrections",
-      variant: "kbc-card--tinted",
-      body: `
-        <div class="stack stack--sm">
-          ${twin.corrections.map((c) => `
-            <div class="row row--between">
-              <div>
-                <div class="t-small t-bold">${h(c.field.replace(/_/g, " "))}</div>
-                ${c.note ? `<div class="kbc-meta">&ldquo;${h(c.note)}&rdquo;</div>` : ""}
-              </div>
-              ${KbcStatusChip({ label: String(c.value), tone: "success" })}
-            </div>`).join("")}
-        </div>
-        <div style="margin-top:var(--space-4)">
-          ${KbcSecondaryButton({ label: "Undo all my corrections", attrs: 'data-clear-corrections="1"', small: true, block: true })}
-        </div>`,
-    }) : ""}
-
-    ${KbcCard({
-      label: "Signals we are tracking",
-      body: `
-        <div class="stack stack--sm">
-          ${twin.signals.filter((s) => s.score > 0 || s.suppressed_by_customer).map((s) => `
-            <div class="signal-row ${s.suppressed_by_customer ? "signal-row--suppressed" : ""}">
-              <span class="signal-row__name">${h(s.label)}</span>
-              <span class="signal-bar">${KbcProgressBar({
-                value: s.score,
-                tone: s.triggered ? "" : "warning",
-              })}</span>
-              <span class="t-micro t-num" style="flex:0 0 34px;text-align:right">${pct(s.score)}</span>
-            </div>`).join("")}
-        </div>
-        <div class="kbc-meta" style="margin-top:var(--space-3)">
-          A signal only acts on your plan once it passes its threshold. Below
-          that we keep watching and do nothing.
-        </div>`,
-    })}
-
-    ${KbcCard({
-      label: "Why we think each thing",
-      body: twin.explanations.map((e) => `
-        <details style="padding:var(--space-2) 0;border-bottom:1px solid var(--kbc-divider)">
-          <summary class="t-small t-bold" style="cursor:pointer">
-            ${h(e.headline)} ${ProvenanceChip(e.provenance, { short: true })}
-          </summary>
-          <ul class="evidence" style="margin-top:var(--space-2)">
-            ${e.reasons.map((r) => `<li><span>${h(r)}</span></li>`).join("")}
-          </ul>
-        </details>`).join(""),
-    })}`;
-}
-
-/* ==========================================================================
-   Edit my Twin - bottom sheet
-   ========================================================================== */
-function renderEditSheet({ twin, meta }) {
-  const retirement = twin.derived_features.retirement || {};
-  const phases = meta?.life_phases || {};
-  const houseGoal = twin.goals.find((g) => g.id === "house_deposit");
-  const bufferGoal = twin.goals.find((g) => g.id !== "house_deposit");
-  const plansHouse = findCorrection(twin, "plans_to_buy_house");
-  const family = findCorrection(twin, "family_expansion");
-
-  return `
-  <div class="sheet-backdrop" data-close-sheet="1">
-    <div class="sheet" role="dialog" aria-label="Edit my Twin" data-stop="1">
-      <div class="sheet__grip"></div>
-      <div class="t-h2">Edit my Twin</div>
-      <p class="t-small t-muted" style="margin:var(--space-2) 0 var(--space-5)">
-        Your corrections override automated assumptions, everywhere, until you
-        change them back.
-      </p>
-
-      <div class="stack stack--lg">
-        ${KbcFormField({
-          label: "My life phase",
-          help: `We currently think: ${h(twin.life_phase.label)} (${pct(twin.life_phase.confidence)})`,
-          control: `<select data-field="life_phase">
-            ${Object.entries(phases).map(([value, label]) => `
-              <option value="${h(value)}" ${value === twin.life_phase.value ? "selected" : ""}>${h(label)}</option>`).join("")}
-          </select>`,
-        })}
-
-        ${KbcFormField({
-          label: "I am planning to buy a home",
-          help: plansHouse === false
-            ? "You told us no. We have stopped suggesting it."
-            : "We infer this from your saving pattern.",
-          control: KbcSegmented({
-            name: "plans_to_buy_house",
-            value: plansHouse === undefined ? "" : String(plansHouse),
-            options: [{ label: "Yes", value: "true" }, { label: "No", value: "false" }],
-          }),
-        })}
-
-        ${KbcFormField({
-          label: "My family is growing",
-          help: family === false
-            ? "You told us no. The assumption is switched off."
-            : "We may infer this from spending. You decide.",
-          control: KbcSegmented({
-            name: "family_expansion",
-            value: family === undefined ? "" : String(family),
-            options: [{ label: "Yes", value: "true" }, { label: "No", value: "false" }],
-          }),
-        })}
-
-        ${KbcFormField({
-          label: "I want to retire at",
-          help: retirement.retirement_age_source === "declared"
-            ? "Your own target, not our assumption."
-            : `We assumed ${retirement.target_retirement_age}.`,
-          control: `<div class="row">
-            <input type="number" min="55" max="72" step="1"
-                   value="${retirement.target_retirement_age}" data-field="target_retirement_age">
-            ${KbcPrimaryButton({ label: "Save", attrs: 'data-save-field="target_retirement_age"', small: true })}
-          </div>`,
-        })}
-
-        ${bufferGoal ? KbcFormField({
-          label: `Target for "${h(bufferGoal.title)}"`,
-          help: `We calculated ${money(bufferGoal.target_amount)} from your own spending.`,
-          control: `<div class="row">
-            <input type="number" min="500" step="100" value="${Math.round(bufferGoal.target_amount)}"
-                   data-field="goal_target:${h(bufferGoal.id)}">
-            ${KbcPrimaryButton({ label: "Save", attrs: `data-save-field="goal_target:${h(bufferGoal.id)}"`, small: true })}
-          </div>`,
-        }) : ""}
-
-        ${houseGoal ? KbcFormField({
-          label: `Target for "${h(houseGoal.title)}"`,
-          help: `Currently ${money(houseGoal.target_amount)}.`,
-          control: `<div class="row">
-            <input type="number" min="1000" step="1000" value="${Math.round(houseGoal.target_amount)}"
-                   data-field="goal_target:${h(houseGoal.id)}">
-            ${KbcPrimaryButton({ label: "Save", attrs: `data-save-field="goal_target:${h(houseGoal.id)}"`, small: true })}
-          </div>`,
-        }) : ""}
-      </div>
-
-      <div style="margin-top:var(--space-6)">
-        ${KbcSecondaryButton({ label: "Close", attrs: 'data-close-sheet="1"', block: true })}
-      </div>
-    </div>
-  </div>`;
+  parts.push(String(household.housing).replace(/_/g, " ").replace("owner with mortgage", "own home, mortgage"));
+  return parts.join(" · ");
 }
 
 function findCorrection(twin, field) {
@@ -538,95 +503,54 @@ function findCorrection(twin, field) {
 }
 
 /* ==========================================================================
-   Sidebar: persona picker, demo controls, pipeline
+   Presenter panel - outside the phone
    ========================================================================== */
-function renderPersonaPicker(personas, activeId) {
-  return KbcCard({
-    label: "Hero personas",
-    title: "Pick a customer",
-    body: `
-      <div class="persona-list">
-        ${(personas || []).map((p) => `
-          <button class="persona" data-persona="${h(p.customer_id)}"
-                  aria-selected="${p.customer_id === activeId}">
-            <span class="persona__avatar">${h(p.hero_key)}</span>
-            <span style="min-width:0;flex:1">
-              <span class="persona__name">${h(p.first_name)} ${h(p.last_name)}, ${p.age}</span>
-              <span class="persona__meta">${h(p.hero_label)} &middot; ${h(p.story?.setup || "")}</span>
-            </span>
-          </button>`).join("")}
-      </div>
-      <div style="margin-top:var(--space-4)">
-        ${KbcSecondaryButton({ label: "Reset the demo", attrs: 'data-reset="1"', block: true, small: true })}
-      </div>`,
-  });
-}
-
-function renderDemoControls(meta, twin) {
+function renderPresenter({ meta, personas }) {
+  const persona = personas.find((p) => p.customer_id === customerState.customerId);
   const actions = meta?.demo_actions || [];
-  const story = twin ? null : null;
-  return KbcCard({
-    label: "Live demo",
-    title: "Inject an event",
-    body: `
-      <p class="t-small t-muted" style="margin-bottom:var(--space-4)">
-        Each button publishes one transaction onto the event queue. The API
-        returns immediately &mdash; the Twin updates asynchronously, and you
-        watch it happen below.
-      </p>
-      <div class="demo-btns">
-        ${actions.map((a) => `
-          <button class="demo-btn" data-inject="${h(a.key)}" ${customerState.busy ? "disabled" : ""}>
-            <span class="demo-btn__icon" style="width:32px;height:32px">
-              <span style="width:18px;height:18px;display:inline-flex">${DEMO_ICONS[a.key] || Icon.euro}</span>
-            </span>
-            <span style="min-width:0;flex:1">
-              <span class="demo-btn__label">${h(a.label)}</span>
-              <span class="demo-btn__hint">${h(a.hint)}</span>
-            </span>
-          </button>`).join("")}
-      </div>`,
-  });
+  const suggested = persona?.story?.demo_action;
+  const ordered = [...actions].sort((a, b) => (b.key === suggested) - (a.key === suggested));
+  const e = customerState.lastEvent;
+
+  return `
+  <aside class="presenter">
+    ${persona ? `
+      <div class="presenter__story">
+        <div class="presenter__kicker">${h(persona.hero_label)}</div>
+        <div class="presenter__title">${h(persona.story.headline)}</div>
+        <p>${h(persona.story.watch_for)}</p>
+      </div>` : ""}
+
+    <div class="presenter__label">Something happens in real life</div>
+    <div class="presenter__events">
+      ${ordered.map((a) => `
+        <button class="presenter__event ${a.key === suggested ? "presenter__event--suggested" : ""}"
+                data-inject="${h(a.key)}" ${customerState.busy ? "disabled" : ""}>
+          <span class="presenter__event-label">${h(eventLabel(a))}</span>
+          <span class="presenter__event-amount">${a.amount > 0 ? "+" : ""}${money(a.amount)}</span>
+        </button>`).join("")}
+    </div>
+
+    <div class="presenter__result" id="presenter-result">
+      ${customerState.busy ? `<span class="kbc-dot kbc-dot--busy"></span> Updating the future…` : e ? `
+        <span class="kbc-dot"></span>
+        Updated in ${e.ms.toFixed(1)} ms
+        <button class="m-link" data-toggle-stages="1">${customerState.stagesOpen ? "Hide steps" : "Show steps"}</button>` : `
+        <span class="t-muted">Each button sends one transaction. Watch the timeline move.</span>`}
+    </div>
+    ${e && customerState.stagesOpen ? PipelineStages(e.stages, { complete: true }) : ""}
+
+    <button class="m-link presenter__reset" data-reset="1">Reset the demo</button>
+  </aside>`;
 }
 
-function renderPipelineCard() {
-  const p = customerState.pipeline;
-  return KbcCard({
-    id: "pipeline-card",
-    label: "Event pipeline",
-    title: p ? p.label : "Idle",
-    body: `
-      ${PipelineStages(p?.stages, {
-        activeIndex: p?.activeIndex ?? -1,
-        complete: p?.complete ?? false,
-      })}
-      ${p?.complete ? `
-        <div class="kbc-banner kbc-banner--success" style="margin-top:var(--space-4)">
-          <div class="t-small">
-            <strong>Twin v${p.version}</strong> in ${p.totalMs?.toFixed(1)} ms.
-            ${p.summary ? h(p.summary) : ""}
-          </div>
-        </div>` : ""}
-      ${!p ? `<div class="kbc-meta" style="margin-top:var(--space-3)">
-        Click a demo button to send an event through Tier 1 and Tier 2.
-      </div>` : ""}`,
-  });
-}
-
-function renderTierNote(meta, twin) {
-  const tier3 = meta?.tier3;
-  if (!tier3) return "";
-  return KbcCard({
-    variant: "kbc-card--flat",
-    label: "Tier 3",
-    title: tier3.generator === "claude" ? "Claude is writing the wording" : "Templates are writing the wording",
-    body: `
-      <p class="t-small t-muted">${h(tier3.note)}</p>
-      <div class="fact-list" style="margin-top:var(--space-3)">
-        ${fact("Called when", (tier3.called_when || []).join(", "))}
-        ${fact("Never called for", (tier3.never_called_for || []).join(", "))}
-      </div>`,
-  });
+function eventLabel(action) {
+  return {
+    "first-salary": "Second salary arrives",
+    "crib-purchase": "Buys a crib",
+    "large-expense": "Pays for a new kitchen",
+    "savings-contribution": "Moves money to savings",
+  }[action.key] || action.label.replace(/^Inject /, "");
 }
 
 /* ==========================================================================
@@ -638,130 +562,155 @@ export function bindCustomer(root, ctx, refresh) {
 
   on("[data-tab]", "click", (e) => {
     customerState.tab = e.currentTarget.dataset.tab;
-    refresh({ keepScroll: false });
+    refresh({ resetScroll: true });
   });
 
-  on("[data-toggle='why']", "click", () => {
-    customerState.whyOpen = !customerState.whyOpen;
-    refresh();
-  });
+  on("[data-toggle='why']", "click", () => { customerState.whyOpen = !customerState.whyOpen; refresh(); });
+  on("[data-toggle-stages]", "click", () => { customerState.stagesOpen = !customerState.stagesOpen; refresh(); });
 
-  on("[data-persona]", "click", async (e) => {
-    customerState.customerId = e.currentTarget.dataset.persona;
-    customerState.pipeline = null;
-    customerState.changed = [];
-    customerState.tab = "home";
-    await refresh({ reload: true });
-  });
+  bindWhatIf(root, ctx);
 
-  on("[data-open-sheet]", "click", () => { customerState.sheet = "twin"; refresh(); });
-  on("[data-close-sheet]", "click", (e) => {
-    if (e.target.closest("[data-stop]") && !e.target.matches("[data-close-sheet]")) return;
-    customerState.sheet = null; refresh();
-  });
-
-  on("[data-inject]", "click", async (e) => {
-    await runInjection(e.currentTarget.dataset.inject, ctx, refresh);
-  });
+  on("[data-inject]", "click", (e) => runInjection(e.currentTarget.dataset.inject, ctx, refresh));
 
   on("[data-reset]", "click", async () => {
     customerState.busy = true; refresh();
     await api.reset();
-    customerState.pipeline = null;
-    customerState.changed = [];
+    resetCustomerState();
     customerState.busy = false;
-    toast("Demo reset to the seeded world.");
+    toast("Demo reset.");
     await refresh({ reload: true });
   });
 
-  /* --- corrections --------------------------------------------------- */
-  on("[data-correct]", "click", async (e) => {
-    const field = e.currentTarget.dataset.correct;
-    const raw = e.currentTarget.dataset.value;
-    await saveCorrection(field, raw === "true", "Corrected from the app", ctx, refresh);
+  on("[data-correct]", "click", (e) => {
+    const { correct, value } = e.currentTarget.dataset;
+    saveCorrection(correct, value === "true", ctx, refresh);
   });
 
-  on("select[data-field='life_phase']", "change", async (e) => {
-    await saveCorrection("life_phase", e.target.value, "Set by me", ctx, refresh);
+  on("select[data-field='life_phase']", "change", (e) =>
+    saveCorrection("life_phase", e.target.value, ctx, refresh));
+
+  on("[data-segmented] button", "click", (e) => {
+    const field = e.currentTarget.closest("[data-segmented]").dataset.segmented;
+    saveCorrection(field, e.currentTarget.dataset.value === "true", ctx, refresh);
   });
 
-  on("[data-segmented] button", "click", async (e) => {
-    const group = e.currentTarget.closest("[data-segmented]").dataset.segmented;
-    const value = e.currentTarget.dataset.value === "true";
-    await saveCorrection(group, value, "Set by me", ctx, refresh);
+  on("[data-step]", "click", (e) => {
+    const current = ctx.twin.derived_features.retirement?.target_retirement_age || 65;
+    const next = Math.max(55, Math.min(72, current + Number(e.currentTarget.dataset.step)));
+    saveCorrection("target_retirement_age", next, ctx, refresh);
   });
 
-  on("[data-save-field]", "click", async (e) => {
-    const field = e.currentTarget.dataset.saveField;
-    const input = root.querySelector(`[data-field="${CSS.escape(field)}"]`);
-    if (!input) return;
-    await saveCorrection(field, Number(input.value), "Set by me", ctx, refresh);
-  });
+  on("[data-goal-target]", "change", (e) =>
+    saveCorrection(`goal_target:${e.target.dataset.goalTarget}`, Number(e.target.value), ctx, refresh));
 
   on("[data-clear-corrections]", "click", async () => {
+    snapshot(ctx);
     await api.clearCorrections(customerState.customerId);
-    toast("All your corrections were undone.");
+    toast("Your answers were undone.");
     await refresh({ reload: true });
+    compareWith(ctx);
+    refresh();
   });
 }
 
-async function saveCorrection(field, value, note, ctx, refresh) {
+/** The slider re-renders only the live part, so dragging stays smooth. */
+function bindWhatIf(root, ctx) {
+  const live = root.querySelector("#fm-live");
+  if (!live) return;
+  const rerender = () => { live.innerHTML = renderLive(ctx); bindWhatIf(root, ctx); };
+
+  live.querySelector("[data-whatif-extra]")?.addEventListener("input", (e) => {
+    customerState.whatIf.extra = Number(e.target.value);
+    e.target.style.setProperty("--fill", `${(customerState.whatIf.extra / 500) * 100}%`);
+    const label = live.querySelector(".fm-slider__label b");
+    if (label) label.textContent = customerState.whatIf.extra ? `+${money(customerState.whatIf.extra)}` : "€0";
+    // Swap everything except the slider itself, which the user is holding.
+    const fresh = document.createElement("div");
+    fresh.innerHTML = renderLive(ctx);
+    live.querySelector(".fm-hero").replaceWith(fresh.querySelector(".fm-hero"));
+    live.querySelector(".fm-tl").replaceWith(fresh.querySelector(".fm-tl"));
+    const head = live.querySelector(".fm-whatif__head");
+    head.replaceWith(fresh.querySelector(".fm-whatif__head"));
+    live.querySelector("[data-whatif-reset]")?.addEventListener("click", resetWhatIf);
+  });
+  live.querySelector("[data-whatif-extra]")?.addEventListener("change", rerender);
+  live.querySelector("[data-whatif-sabbatical]")?.addEventListener("click", () => {
+    customerState.whatIf.sabbatical = !customerState.whatIf.sabbatical;
+    rerender();
+  });
+  live.querySelector("[data-whatif-reset]")?.addEventListener("click", resetWhatIf);
+
+  function resetWhatIf() {
+    customerState.whatIf = { ...WHAT_IF_DEFAULT };
+    rerender();
+  }
+}
+
+/* --- remember dates before a change, so the timeline can say what moved --- */
+let before = null;
+
+function snapshot(ctx) {
+  const p = project(ctx.twin);
+  before = {
+    goals: Object.fromEntries(Object.entries(p.goals).map(([id, g]) => [id, g.months])),
+    retirement: p.retirement.monthlyIncome,
+    titles: ctx.twin.future_timeline.map((m) => m.title),
+  };
+}
+
+function compareWith(ctx) {
+  if (!before) return;
+  const p = project(ctx.twin);
+  const moves = {};
+  for (const [id, g] of Object.entries(p.goals)) {
+    const old = before.goals[id];
+    if (old != null && g.months != null && g.months !== old) moves[id] = g.months - old;
+  }
+  const income = Math.round(p.retirement.monthlyIncome - before.retirement);
+  if (income) moves.retirement = income;
+  customerState.moves = moves;
+  customerState.newTitles = ctx.twin.future_timeline
+    .map((m) => m.title).filter((t) => !before.titles.includes(t));
+  before = null;
+}
+
+async function saveCorrection(field, value, ctx, refresh) {
   try {
-    const result = await api.correct(customerState.customerId, field, value, note);
-    customerState.changed = result.twin.changed_fields || [];
-    toast(`Saved. ${result.notice}`);
+    snapshot(ctx);
+    await api.correct(customerState.customerId, field, value, "Set by me");
     await refresh({ reload: true });
+    compareWith(ctx);
+    toast("Saved. Your future is updated.");
+    refresh();
   } catch (error) {
     toast(`Could not save: ${error.message}`);
   }
 }
 
-/** The demo money-shot: publish, then walk the stages as the worker reports
- *  them, then re-render the Twin with the changed values highlighted. */
 async function runInjection(actionKey, ctx, refresh) {
+  const action = (ctx.meta?.demo_actions || []).find((a) => a.key === actionKey);
   customerState.busy = true;
-  customerState.changed = [];
-  const label = (ctx.meta?.demo_actions || []).find((a) => a.key === actionKey)?.label || "Event";
-  customerState.pipeline = { label, stages: null, activeIndex: 0, complete: false };
+  customerState.whatIf = { ...WHAT_IF_DEFAULT };
+  snapshot(ctx);
   await refresh();
 
   try {
     const accepted = await api.inject(customerState.customerId, actionKey);
-
-    // Animate through the stages while the worker is actually working.
-    const ticker = setInterval(async () => {
-      if (!customerState.pipeline || customerState.pipeline.complete) return;
-      customerState.pipeline.activeIndex =
-        Math.min(5, customerState.pipeline.activeIndex + 1);
-      await refresh({ pipelineOnly: true });
-    }, 170);
-
     const trace = await waitForEvent(accepted.event_id);
-    clearInterval(ticker);
-
-    customerState.pipeline = {
-      label,
-      stages: trace.stages,
-      activeIndex: trace.stages.length,
-      complete: true,
+    customerState.lastEvent = {
+      label: action ? eventLabel(action) : "Event",
+      ms: trace.total_ms || 0,
       version: trace.twin_version,
-      totalMs: trace.total_ms,
-      summary: "",
+      stages: trace.stages,
     };
-    customerState.changed = trace.changed || [];
     customerState.busy = false;
+    customerState.tab = "future";
     await refresh({ reload: true });
-
-    const twin = ctx.twin;
-    if (twin?.change_summary) {
-      customerState.pipeline.summary = twin.change_summary;
-      toast(twin.change_summary.split(";")[0]);
-      await refresh({ pipelineOnly: true });
-    }
+    compareWith(ctx);
+    refresh();
   } catch (error) {
     customerState.busy = false;
-    customerState.pipeline = null;
     toast(`Event failed: ${error.message}`);
-    await refresh();
+    refresh();
   }
 }

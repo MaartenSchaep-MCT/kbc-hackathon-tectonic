@@ -81,6 +81,11 @@ class Goal(BaseModel):
     provenance: Provenance = "derived"
     origin: str = ""             # which playbook or correction created it
     explanation: str = ""
+    # "stage": in everyone's plan at this stage of life, "detected": from
+    # spending, "custom": the customer added it. All of them can be removed.
+    source: str = "detected"
+    deadline: str | None = None          # "September 2027" for a goal needed by a date
+    deadline_months: int | None = None
 
     @property
     def progress(self) -> float:

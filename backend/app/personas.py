@@ -1,4 +1,4 @@
-"""The three hero personas.
+"""The four hero personas.
 
 Their transaction histories are hand-built, not random, because the demo
 depends on precise "before" states:
@@ -12,6 +12,9 @@ depends on precise "before" states:
                 exactly 78% - still an assumption, and correctable.
   C  Marc     - a full pension picture, so a single large expense or an extra
                 monthly contribution visibly moves the projection.
+  D  Noah     - 15, saving pocket money for a driving licence at 16. At his
+                pace he gets there a few months late, so birthday money or the
+                "what if" slider visibly pulls the date in.
 
 Every amount is synthetic.
 """
@@ -57,6 +60,15 @@ DEMO_ACTIONS: dict[str, dict] = {
         "description": "Overschrijving naar spaarrekening",
         "channel": "kbc_mobile",
         "hint": "An extra monthly contribution. Watch the projected dates move earlier.",
+    },
+    "birthday-money": {
+        "label": "Inject EUR 150 birthday money to savings",
+        "merchant": "KBC Spaarrekening",
+        "category": "savings_transfer",
+        "amount": -150.00,
+        "description": "Verjaardagsgeld naar spaarrekening",
+        "channel": "kbc_mobile",
+        "hint": "Birthday money goes to savings. Watch the driving licence date.",
     },
 }
 
@@ -291,15 +303,62 @@ def persona_c(ref: date) -> tuple[dict, list[dict]]:
     return customer, txns
 
 
+# --------------------------------------------------------------------------
+# Persona D - Noah Claes, 15, saving for a driving licence
+# --------------------------------------------------------------------------
+def persona_d(ref: date) -> tuple[dict, list[dict]]:
+    customer = {
+        "customer_id": "KBC-HERO-D",
+        "first_name": "Noah",
+        "last_name": "Claes",
+        "age": 15,
+        "household_type": "single",
+        "partner_name": None,
+        "children": 0,
+        "housing": "living_with_parents",
+        "city": "Hasselt",
+        "employer": None,
+        "is_hero": 1,
+        "hero_key": "D",
+        "hero_label": "Driving licence",
+        "declared": {
+            "occupation": "Secondary school pupil",
+            "notes": "Youth account, opened by his parents.",
+        },
+        "opening_savings": 310.00,
+    }
+
+    txns: list[dict] = []
+    for i in range(11, -1, -1):
+        month = _m(ref, i)
+        txns += [
+            _txn(month, 1, "Overschrijving ouders", "gift_transfer", 60.00, "Zakgeld"),
+            _txn(month, 2, "Overschrijving spaarrekening", "savings_transfer", -40.00,
+                 "Sparen voor rijbewijs"),
+            _txn(month, 9, "De Lijn", "transport_public", -6.00, "Busticket"),
+            _txn(month, 14, "Carrefour Express", "groceries", -7.50, "Snacks"),
+        ]
+        if i in (10, 6, 3):
+            txns.append(_txn(month, 20, "Game Mania", "entertainment", -24.99, "Game"))
+    return customer, txns
+
+
 HERO_BUILDERS = {
     "KBC-HERO-A": persona_a,
     "KBC-HERO-B": persona_b,
     "KBC-HERO-C": persona_c,
+    "KBC-HERO-D": persona_d,
 }
 
-HERO_ORDER = ["KBC-HERO-A", "KBC-HERO-B", "KBC-HERO-C"]
+HERO_ORDER = ["KBC-HERO-D", "KBC-HERO-A", "KBC-HERO-B", "KBC-HERO-C"]
 
 HERO_STORIES = {
+    "KBC-HERO-D": {
+        "headline": "Noah wants to drive at 16",
+        "setup": "He saves EUR 40 of his pocket money each month for driving lessons.",
+        "demo_action": "birthday-money",
+        "watch_for": "The driving licence date moves closer to his 16th birthday.",
+    },
     "KBC-HERO-A": {
         "headline": "Lotte just graduated",
         "setup": "Her Twin still reads 'Studying': one salary payment is not a pattern.",

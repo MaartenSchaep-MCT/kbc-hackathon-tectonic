@@ -292,6 +292,27 @@ CORRECTABLE_FIELDS = {
     "household_type": "Your household type",
     "children": "Number of children",
 }
+# goal_target:<id> changes an amount, goal_removed:<id> takes a goal out of the
+# plan (false puts it back), custom_goal:<id> = {title, target_amount} adds one
+# (null deletes it).
+GOAL_FIELD_PREFIXES = ("goal_target:", "goal_removed:", "custom_goal:")
+
+
+def _describe_correction(c: dict) -> dict:
+    """Label and value for a correction, readable by an advisor."""
+    field, value = c["field"], c["value"]
+    kind, _, goal_id = field.partition(":")
+    name = goal_id.replace("_", " ")
+    if kind == "goal_removed":
+        return {"label": f"Goal '{name}'", "value": "Removed" if value else "Put back"}
+    if kind == "custom_goal":
+        if not value:
+            return {"label": f"Own goal '{name}'", "value": "Deleted"}
+        return {"label": f"Own goal '{value.get('title', name)}'",
+                "value": f"EUR {float(value.get('target_amount', 0)):,.0f}"}
+    if kind == "goal_target":
+        return {"label": f"Target for '{name}'", "value": f"EUR {float(value):,.0f}"}
+    return {"label": CORRECTABLE_FIELDS.get(field, field), "value": value}
 
 
 @app.get("/api/twins/{customer_id}/corrections")
@@ -315,14 +336,22 @@ async def add_correction(customer_id: str, body: CorrectionIn) -> dict:
     if not twin_engine.load_customer(customer_id):
         raise HTTPException(404, f"Unknown customer {customer_id}")
     field = body.field
-    if field not in CORRECTABLE_FIELDS and not field.startswith("goal_target:"):
+    if field not in CORRECTABLE_FIELDS and not field.startswith(GOAL_FIELD_PREFIXES):
         raise HTTPException(
             400,
-            f"'{field}' is not a correctable field. "
-            f"Allowed: {sorted(CORRECTABLE_FIELDS)} or goal_target:<goal_id>",
+            f"'{field}' is not a correctable field. Allowed: {sorted(CORRECTABLE_FIELDS)}, "
+            f"goal_target:<goal_id>, goal_removed:<goal_id> or custom_goal:<goal_id>",
         )
     if field == "life_phase" and body.value not in scoring.LIFE_PHASE_LABELS:
         raise HTTPException(400, f"Unknown life phase '{body.value}'")
+    if field.startswith("custom_goal:") and body.value is not None:
+        value = body.value if isinstance(body.value, dict) else {}
+        try:
+            amount = float(value.get("target_amount", 0))
+        except (TypeError, ValueError):
+            amount = 0
+        if not str(value.get("title", "")).strip() or amount <= 0:
+            raise HTTPException(400, "A custom goal needs a title and a target_amount above 0")
 
     db.execute(
         "INSERT INTO corrections(customer_id, field, value_json, note, created_at) "
@@ -480,8 +509,7 @@ def advisor_view(customer_id: str) -> dict:
         {"label": "Children", "value": customer["children"]},
         {"label": "Housing", "value": customer["housing"].replace("_", " ")},
     ] + [
-        {"label": CORRECTABLE_FIELDS.get(c["field"], c["field"]),
-         "value": c["value"], "is_correction": True, "note": c["note"]}
+        {**_describe_correction(c), "is_correction": True, "note": c["note"]}
         for c in twin["corrections"]
     ]
     inferred = [

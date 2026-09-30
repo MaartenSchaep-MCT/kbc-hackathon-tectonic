@@ -20,7 +20,10 @@ from __future__ import annotations
 import gc
 import platform
 import random
-import resource
+try:
+    import resource  # Unix only
+except ImportError:  # Windows
+    resource = None
 import sys
 import time
 from datetime import datetime, timezone
@@ -39,6 +42,8 @@ EVENT_TEMPLATE = [
 
 
 def _rss_mb() -> float:
+    if resource is None:
+        return 0.0
     usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     # ru_maxrss is bytes on macOS, kilobytes on Linux.
     return round(usage / (1024 * 1024 if sys.platform == "darwin" else 1024), 1)

@@ -33,6 +33,7 @@ class GoalTemplate:
     # playbooks each want "a buffer"; the customer has one. The engine keeps
     # the strongest and drops the rest, so no euro is counted twice.
     group: str = ""
+    deadline_age: int = 0            # needed by this age, e.g. a driving licence at 16
 
 
 @dataclass

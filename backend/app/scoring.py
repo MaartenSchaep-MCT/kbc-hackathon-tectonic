@@ -373,6 +373,17 @@ SIGNAL_MODELS: list[ScoringModel] = [
 # --------------------------------------------------------------------------
 LIFE_PHASE_MODELS: list[ScoringModel] = [
     ScoringModel(
+        id="school", label="At school", kind="life_phase", threshold=0.5,
+        rules=[
+            Rule(0.60, "Age {age}",
+                 lambda c: c["age"] < 18, provenance="declared"),
+            Rule(0.25, "No salary",
+                 lambda c: not c["salary_detected"]),
+            Rule(0.15, "Pocket-money income of EUR {monthly_income:,.0f} a month",
+                 lambda c: c["monthly_income"] < 400),
+        ],
+    ),
+    ScoringModel(
         id="student", label="Studying", kind="life_phase", threshold=0.5,
         rules=[
             Rule(0.35, "Student income across {student_income_months} months",

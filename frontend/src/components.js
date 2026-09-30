@@ -5,9 +5,8 @@
    the prototype dependency-free (no build step, no npm) while still giving one
    coherent design system rather than per-screen styling.
 
-   Components: KbcHeader, KbcBottomNavigation, KbcCard, KbcPrimaryButton,
-   KbcSecondaryButton, KbcProgressBar, KbcStatusChip, KbcInfoBanner,
-   KbcFormField, KbcTimeline, KbcGoalCard, KbcTwinInsight, KbcAdvisorPanel,
+   Components: KbcHeader, KbcCard, KbcPrimaryButton, KbcSecondaryButton,
+   KbcProgressBar, KbcStatusChip, KbcInfoBanner, KbcTimeline, KbcAdvisorPanel,
    plus the provenance chip and confidence meter that carry the
    explainability story.
    ========================================================================== */
@@ -30,20 +29,28 @@ export const Icon = {
   chevron: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg>`,
   check: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4L19 7"/></svg>`,
   edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L20 8l-4-4L4 16z"/></svg>`,
+  wallet: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18v3"/><rect x="4" y="8" width="16" height="11" rx="2.5"/><path d="M16 13.5h1.5"/></svg>`,
+  user: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>`,
+  kate: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 8h7M5 12h14M10 16h7"/></svg>`,
+  bell: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5h4"/></svg>`,
+  sun: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/></svg>`,
+  house: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/></svg>`,
+  shield: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 5 6v5.5c0 4.2 3 7.6 7 9 4-1.4 7-4.8 7-9V6z"/><path d="m9 12 2 2 4-4"/></svg>`,
+  plus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 6v12M6 12h12"/></svg>`,
+  minus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 12h12"/></svg>`,
 };
 
 /* ==========================================================================
    KbcHeader
    ========================================================================== */
-export function KbcHeader({ tabs, active, status }) {
+export function KbcHeader({ tabs, active, personas = [], customerId }) {
   return `
     <header class="kbc-appbar">
       <span class="kbc-wordmark">
         <span class="kbc-wordmark__mark">KBC</span>
-        Financial Twin
-        <span class="kbc-wordmark__sub">prototype</span>
+        Future Me
       </span>
-      <nav class="kbc-tabs" role="tablist" aria-label="Channel">
+      <nav class="kbc-tabs" role="tablist" aria-label="View">
         ${tabs.map((t) => `
           <button class="kbc-tab" role="tab" data-route="${h(t.id)}"
                   aria-selected="${t.id === active}">
@@ -51,23 +58,15 @@ export function KbcHeader({ tabs, active, status }) {
             <span class="kbc-tab__short">${h(t.short || t.label)}</span>
           </button>`).join("")}
       </nav>
-      <div class="kbc-appbar__status">${status || ""}</div>
-    </header>`;
-}
-
-/* ==========================================================================
-   KbcBottomNavigation
-   ========================================================================== */
-export function KbcBottomNavigation({ items, active }) {
-  return `
-    <nav class="phone__nav" role="tablist" aria-label="App sections">
-      ${items.map((item) => `
-        <button role="tab" data-tab="${h(item.id)}"
-                aria-selected="${item.id === active}">
-          ${Icon[item.icon] || ""}
-          <span>${h(item.label)}</span>
-        </button>`).join("")}
-    </nav>`;
+    </header>
+    ${personas.length ? `
+      <div class="persona-bar" role="group" aria-label="Customer">
+        ${personas.map((p) => `
+          <button class="persona-pill" data-persona="${h(p.customer_id)}"
+                  aria-pressed="${p.customer_id === customerId}">
+            <b>${h(p.first_name)}, ${p.age}</b> <span>${h(p.hero_label)}</span>
+          </button>`).join("")}
+      </div>` : ""}`;
 }
 
 /* ==========================================================================
@@ -153,24 +152,6 @@ export const KbcInfoBanner = ({ text, tone = "", icon = Icon.info, html = "" }) 
    </div>`;
 
 /* ==========================================================================
-   KbcFormField
-   ========================================================================== */
-export function KbcFormField({ label, help = "", control }) {
-  return `<div class="field">
-            <label class="field__label">${h(label)}</label>
-            ${control}
-            ${help ? `<div class="field__help">${h(help)}</div>` : ""}
-          </div>`;
-}
-
-export const KbcSegmented = ({ name, options, value }) =>
-  `<div class="segmented" role="group" data-segmented="${h(name)}">
-     ${options.map((o) => `
-       <button type="button" data-value="${h(String(o.value))}"
-               aria-pressed="${String(o.value) === String(value)}">${h(o.label)}</button>`).join("")}
-   </div>`;
-
-/* ==========================================================================
    Progress ring (headline metric)
    ========================================================================== */
 export function ProgressRing(value, { size = 74, stroke = 7 } = {}) {
@@ -187,83 +168,6 @@ export function ProgressRing(value, { size = 74, stroke = 7 } = {}) {
     </svg>
     <span class="ring__value">${pct(value)}</span>
   </div>`;
-}
-
-/* ==========================================================================
-   KbcTwinInsight - the hero card. Life phase + confidence + "why we think this"
-   ========================================================================== */
-export function KbcTwinInsight(twin, { expanded = false } = {}) {
-  const phase = twin.life_phase;
-  const isAssumption = phase.provenance === "inferred";
-  const explanation = (twin.explanations || []).find((e) => e.field === "life_phase");
-  return `
-    <section class="twin-hero" id="twin-hero">
-      <div class="row row--between" style="align-items:flex-start">
-        <div style="min-width:0">
-          <div class="twin-hero__eyebrow">Your Financial Twin &middot; v${twin.version}</div>
-          <div class="twin-hero__phase" id="phase-value">${h(phase.label || phase.value)}</div>
-          <div class="twin-hero__conf">
-            ${ConfidenceMeter(phase.confidence, { warn: isAssumption })}
-            <span class="t-small t-bold">${pct(phase.confidence)}</span>
-            ${ProvenanceChip(phase.provenance, { short: true })}
-          </div>
-        </div>
-        ${ProgressRing(twin.progress_score)}
-      </div>
-      <div class="kbc-meta" style="color:var(--kbc-primary-150);margin-top:var(--space-2)">
-        Progress towards your own goals
-      </div>
-      <button class="twin-hero__why" data-toggle="why" aria-expanded="${expanded}">
-        ${expanded ? "Hide the reasoning" : "Why we think this"}
-        <span style="width:16px;height:16px;display:inline-flex;transform:rotate(${expanded ? 90 : 0}deg);transition:transform var(--duration)">${Icon.chevron}</span>
-      </button>
-      ${expanded && explanation ? `
-        <ul class="twin-hero__reasons">
-          ${explanation.reasons.map((r) => `<li><span>${h(r)}</span></li>`).join("")}
-        </ul>
-        <div class="kbc-meta" style="color:var(--kbc-primary-150);margin-top:var(--space-3)">
-          ${isAssumption
-            ? "This is our reading of your transactions, not something you told us. You can change it."
-            : "You told us this, so it overrides anything we would have inferred."}
-        </div>` : ""}
-    </section>`;
-}
-
-/* ==========================================================================
-   KbcGoalCard
-   ========================================================================== */
-export function KbcGoalCard(goal) {
-  const progress = goal.target_amount > 0
-    ? Math.min(1, goal.current_amount / goal.target_amount) : 0;
-  const done = goal.projected_completion === "reached";
-  const tone = done ? "success" : goal.on_track ? "" : "warning";
-  return `
-    <div class="goal" data-goal="${h(goal.id)}">
-      <div class="goal__top">
-        <span class="t-body t-bold">${h(goal.title)}</span>
-        ${done
-          ? KbcStatusChip({ label: "Reached", tone: "success" })
-          : `<span class="kbc-meta">${h(goal.projected_completion || "no date yet")}</span>`}
-      </div>
-      <div class="goal__amounts t-num">
-        ${money(goal.current_amount)}
-        <span class="goal__target"> / ${money(goal.target_amount)}</span>
-      </div>
-      ${KbcProgressBar({ value: progress, tone })}
-      <div class="goal__foot">
-        <span class="kbc-meta">
-          ${goal.monthly_contribution > 0
-            ? `${money(goal.monthly_contribution)} per month`
-            : done ? "Fully funded" : "Nothing allocated yet"}
-        </span>
-        <span class="kbc-meta">${pct(progress)}</span>
-      </div>
-      ${goal.explanation ? `<div class="kbc-meta">${h(goal.explanation)}</div>` : ""}
-      <div class="row" style="gap:var(--space-2)">
-        ${ProvenanceChip(goal.provenance, { short: true })}
-        ${goal.origin ? `<span class="kbc-meta">from &ldquo;${h(goal.origin)}&rdquo;</span>` : ""}
-      </div>
-    </div>`;
 }
 
 /* ==========================================================================
@@ -298,8 +202,8 @@ export function PipelineStages(stages, { activeIndex = -1, complete = false } = 
     { name: "Transaction stored", detail: "Observed fact recorded" },
     { name: "Tier 1 - feature update", detail: "Streaming features recomputed" },
     { name: "Tier 2 - life-event scoring", detail: "Interpretable models scored" },
-    { name: "Financial Twin updated", detail: "New version written" },
-    { name: "Shared Twin API", detail: "Every channel sees it" },
+    { name: "Future updated", detail: "New version written" },
+    { name: "Shared API", detail: "App and advisor see it" },
   ];
   const list = stages && stages.length ? stages : planned;
   return `<div class="pipe">

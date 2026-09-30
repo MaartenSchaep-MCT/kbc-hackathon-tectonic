@@ -12,12 +12,14 @@ import {
   bindArchitecture, renderArchitecture,
 } from "./views/architecture.js";
 import { bindAdvisor, renderAdvisor } from "./views/advisor.js";
-import { bindCustomer, customerState, renderCustomer } from "./views/customer.js";
+import {
+  bindCustomer, customerState, renderCustomer, resetCustomerState,
+} from "./views/customer.js";
 
 const TABS = [
-  { id: "customer",     label: "Customer App",         short: "App" },
-  { id: "advisor",      label: "Advisor View",         short: "Advisor" },
-  { id: "architecture", label: "Architecture & Scale", short: "Scale" },
+  { id: "customer",     label: "Customer app",   short: "App" },
+  { id: "advisor",      label: "Advisor",        short: "Advisor" },
+  { id: "architecture", label: "How it scales",  short: "Scale" },
 ];
 
 const ctx = {
@@ -78,17 +80,6 @@ async function loadRoute() {
 /* ==========================================================================
    Render
    ========================================================================== */
-function statusHtml() {
-  const bus = ctx.health?.event_bus;
-  const tier3 = ctx.meta?.tier3;
-  if (!bus) return "";
-  const busy = bus.queue_depth > 0;
-  return `
-    <span class="kbc-dot ${busy ? "kbc-dot--busy" : bus.worker_running ? "" : "kbc-dot--idle"}"></span>
-    <span>queue ${bus.queue_depth} &middot; ${bus.processed} processed</span>
-    <span style="opacity:.6">&middot; Tier 3: ${tier3?.generator || "?"}</span>`;
-}
-
 function renderRoute() {
   switch (ctx.route) {
     case "advisor":      return renderAdvisor(ctx);
@@ -101,6 +92,14 @@ function bindRoute() {
   root.querySelectorAll("[data-route]").forEach((el) =>
     el.addEventListener("click", () => navigate(el.dataset.route)));
 
+  root.querySelectorAll("[data-persona]").forEach((el) =>
+    el.addEventListener("click", async () => {
+      if (el.dataset.persona === customerState.customerId) return;
+      customerState.customerId = el.dataset.persona;
+      resetCustomerState();
+      await refresh({ reload: true, resetScroll: true });
+    }));
+
   switch (ctx.route) {
     case "advisor":      bindAdvisor(root, ctx, refresh); break;
     case "architecture": bindArchitecture(root, ctx, refresh); break;
@@ -110,34 +109,23 @@ function bindRoute() {
 
 /**
  * Re-render.
- *  reload       - refetch route data first
- *  pipelineOnly - swap just the pipeline card, so the phone does not
- *                 re-render (and lose scroll position) 6 times per animation
+ *  reload      - refetch route data first
+ *  resetScroll - start the phone at the top (new tab or new customer)
  */
-async function refresh({ reload = false, pipelineOnly = false } = {}) {
+async function refresh({ reload = false, resetScroll = false } = {}) {
   if (reload) {
     try {
-      await Promise.all([loadRoute(), api.health().then((h) => { ctx.health = h; })]);
+      await loadRoute();
     } catch (error) {
       toast(`Could not load: ${error.message}`);
     }
   }
 
-  if (pipelineOnly && ctx.route === "customer") {
-    const fresh = document.createElement("div");
-    fresh.innerHTML = renderCustomer(ctx);
-    const next = fresh.querySelector("#pipeline-card");
-    const current = root.querySelector("#pipeline-card");
-    if (next && current) {
-      current.replaceWith(next);
-      next.querySelectorAll("[data-route]").forEach(() => {});
-      return;
-    }
-  }
-
-  const scroll = root.querySelector("#phone-scroll")?.scrollTop ?? 0;
-  root.innerHTML =
-    KbcHeader({ tabs: TABS, active: ctx.route, status: statusHtml() }) + renderRoute();
+  const scroll = resetScroll ? 0 : root.querySelector("#phone-scroll")?.scrollTop ?? 0;
+  root.innerHTML = KbcHeader({
+    tabs: TABS, active: ctx.route,
+    personas: ctx.personas, customerId: customerState.customerId,
+  }) + renderRoute();
   const scroller = root.querySelector("#phone-scroll");
   if (scroller) scroller.scrollTop = scroll;
   bindRoute();
@@ -156,7 +144,7 @@ async function navigate(route) {
 async function boot() {
   root.innerHTML = `
     <div class="kbc-appbar">
-      <span class="kbc-wordmark"><span class="kbc-wordmark__mark">KBC</span> Financial Twin</span>
+      <span class="kbc-wordmark"><span class="kbc-wordmark__mark">KBC</span> Future Me</span>
     </div>
     <div class="page"><div class="page__inner stack">
       <div class="skeleton" style="height:120px"></div>
@@ -182,17 +170,6 @@ async function boot() {
   }
 
   await refresh({ reload: true });
-
-  // Keep the header's queue counter live. Cheap, and it makes the
-  // asynchronous pipeline legible without any user action.
-  setInterval(async () => {
-    try {
-      const health = await api.health();
-      ctx.health = health;
-      const status = root.querySelector(".kbc-appbar__status");
-      if (status) status.innerHTML = statusHtml();
-    } catch { /* ignore transient errors */ }
-  }, 2500);
 }
 
 boot();
