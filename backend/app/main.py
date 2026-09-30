@@ -468,6 +468,11 @@ async def demo_savings(customer_id: str, wait: bool = False) -> dict:
     return await _inject(customer_id, "savings-contribution", wait)
 
 
+@app.post("/api/demo/{customer_id}/birthday-money")
+async def demo_birthday_money(customer_id: str, wait: bool = False) -> dict:
+    return await _inject(customer_id, "birthday-money", wait)
+
+
 @app.post("/api/demo/reset")
 async def demo_reset() -> dict:
     """Put the world back to its seeded state, for a second demo run."""

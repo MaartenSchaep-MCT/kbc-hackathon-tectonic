@@ -808,7 +808,41 @@ table.kbc-table { width: 100%; border-collapse: collapse; font-size: var(--text-
   border: 1px solid var(--kbc-primary-100); border-radius: var(--radius-md);
   padding: 4px var(--space-2); font-size: var(--text-small);
 }
-.m-amount input { width: 72px; border: 0; font: inherit; color: var(--kbc-primary); text-align: right; outline: none; }
+.m-amount input { width: 64px; border: 0; font: inherit; color: var(--kbc-primary); text-align: right; outline: none; background: transparent; }
+.m-amount:focus-within { border-color: var(--kbc-accent); }
+
+.m-row__icon { flex: 0 0 auto; width: 26px; height: 26px; color: var(--kbc-accent); }
+.m-remove {
+  flex: 0 0 auto; width: 28px; height: 28px; padding: 6px; border-radius: 50%;
+  border: 0; background: transparent; color: var(--kbc-text-secondary); cursor: pointer;
+}
+.m-remove:hover { background: var(--kbc-danger-25); color: var(--kbc-danger); }
+.m-removed {
+  display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3);
+  margin-top: calc(-1 * var(--space-2));
+  font-size: var(--text-micro); color: var(--kbc-text-secondary);
+}
+.m-removed .m-link { font-size: var(--text-micro); }
+
+.m-add { display: flex; flex-direction: column; gap: var(--space-3); }
+.m-presets { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.m-preset {
+  display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer;
+  padding: 6px var(--space-3) 6px var(--space-2); border-radius: var(--radius-pill);
+  border: 1px solid var(--kbc-primary-100); background: var(--kbc-surface);
+  font-size: var(--text-small); color: var(--kbc-primary);
+  transition: border-color var(--duration) var(--ease), background var(--duration) var(--ease);
+}
+.m-preset svg { width: 18px; height: 18px; color: var(--kbc-accent); }
+.m-preset:hover { border-color: var(--kbc-accent); background: var(--kbc-accent-25); }
+.m-custom { display: flex; gap: var(--space-2); align-items: center; }
+.m-custom input[type="text"] {
+  flex: 1; min-width: 0; padding: 7px var(--space-3);
+  border: 1px solid var(--kbc-primary-100); border-radius: var(--radius-md);
+  font: inherit; font-size: var(--text-small); color: var(--kbc-primary); outline: none;
+}
+.m-custom input[type="text"]:focus { border-color: var(--kbc-accent); }
+.m-custom .m-amount input { width: 56px; }
 
 /* ==========================================================================
    Presenter panel beside the phone
@@ -836,6 +870,11 @@ table.kbc-table { width: 100%; border-collapse: collapse; font-size: var(--text-
 .presenter__event--suggested { border: 2px solid var(--kbc-accent); }
 .presenter__event-label { font-weight: var(--weight-bold); }
 .presenter__event-amount { color: var(--kbc-text-secondary); font-variant-numeric: tabular-nums; }
+.presenter__more summary {
+  cursor: pointer; padding: var(--space-1) 0;
+  font-size: var(--text-small); color: var(--kbc-text-secondary);
+}
+.presenter__more[open] summary { margin-bottom: var(--space-2); }
 .presenter__result { display: flex; align-items: center; gap: var(--space-2); min-height: 24px; font-size: var(--text-small); }
 .presenter__reset { align-self: flex-start; margin-top: var(--space-2); color: var(--kbc-text-secondary); font-weight: var(--weight-regular); }
 

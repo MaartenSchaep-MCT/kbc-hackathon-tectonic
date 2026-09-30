@@ -39,6 +39,9 @@ DEFAULT_RETIREMENT_AGE = 65
 
 BUFFER_TARGET_MONTHS = 3.0
 
+DRIVING_LESSONS_AGE = 17              # Belgian learner's permit
+DRIVING_EXAM_AGE = 18                 # Belgian practical driving exam
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -93,12 +96,15 @@ def load_corrections(customer_id: str) -> tuple[dict, list[Correction]]:
 # Goals that go into the plan automatically for a stage of life, without the
 # customer having to ask. They can remove any of them, and add their own.
 STAGE_GOALS: list[tuple] = [
+    # In Belgium you can start learning to drive at 17 and take the practical
+    # exam at 18, so the money for lessons is needed by 17.
     (lambda c: c["age"] < 18,
      playbooks.GoalTemplate(
          id="driving_licence", title="Driving licence",
          target_rule="lessons and exams, about EUR 1,500",
-         target_fixed=1500.0, priority=1, deadline_age=16,
-         explanation="Driving lessons and exams usually cost around EUR 1,500.",
+         target_fixed=1500.0, priority=1, deadline_age=DRIVING_LESSONS_AGE,
+         explanation=(f"Lessons start at {DRIVING_LESSONS_AGE}, the practical exam is at "
+                      f"{DRIVING_EXAM_AGE}. Together they usually cost around EUR 1,500."),
      )),
     (lambda c: (20 <= c["age"] <= 45
                 and c["housing"] in ("renting", "living_with_parents")
@@ -416,6 +422,16 @@ def _build_timeline(ctx: dict, customer: dict, goals: list[Goal],
                 kind="projected", confidence=0.6, provenance="inferred",
                 goal_id="house_deposit",
             ))
+
+    if any(g.id == "driving_licence" for g in goals) and ctx["age"] < DRIVING_EXAM_AGE:
+        exam = _add_months(today, (DRIVING_EXAM_AGE - ctx["age"]) * 12)
+        out.append(Milestone(
+            year=exam.year, date_label=exam.strftime("%B %Y"),
+            title=f"Driving exam at {DRIVING_EXAM_AGE}",
+            detail=(f"Learn to drive from {DRIVING_LESSONS_AGE}, "
+                    f"take the practical exam at {DRIVING_EXAM_AGE}"),
+            kind="projected", confidence=1.0, provenance="derived",
+        ))
 
     # Retirement is not a useful line on a teenager's timeline.
     if ctx["age"] < 18:

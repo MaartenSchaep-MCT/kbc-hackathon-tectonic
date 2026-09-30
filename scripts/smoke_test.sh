@@ -28,10 +28,10 @@ check "API health is ok" \
 check "1,000 customers are seeded" \
   bash -c "[ \"\$(curl -fsS '$BASE/api/health' | python3 -c 'import json,sys;print(json.load(sys.stdin)[\"customers\"])')\" -ge 1000 ]"
 
-check "all three hero personas load" \
-  bash -c "[ \"\$(curl -fsS '$BASE/api/personas' | python3 -c 'import json,sys;print(len(json.load(sys.stdin)[\"personas\"]))')\" -eq 3 ]"
+check "all four hero personas load" \
+  bash -c "[ \"\$(curl -fsS '$BASE/api/personas' | python3 -c 'import json,sys;print(len(json.load(sys.stdin)[\"personas\"]))')\" -eq 4 ]"
 
-for p in A B C; do
+for p in A B C D; do
   check "persona $p has a Twin" \
     bash -c "curl -fsS '$BASE/api/twins/KBC-HERO-$p' | grep -q '\"life_phase\"'"
 done

@@ -421,3 +421,54 @@ def test_reset_restores_the_seeded_world(client):
     twin = client.get(f"/api/twins/{HERO_A}").json()
     assert twin["corrections"] == []
     assert twin["life_phase"]["value"] == "student"
+
+
+# ==========================================================================
+# Goals are filled in for the stage of life, and the customer edits them
+# ==========================================================================
+def test_stage_goals_are_added_without_asking(client):
+    teen = client.get("/api/twins/KBC-HERO-D").json()
+    licence = next(g for g in teen["goals"] if g["id"] == "driving_licence")
+    assert licence["source"] == "stage"
+    # Belgium: lessons from 17, so the money is needed two years from now.
+    assert licence["deadline"] and licence["deadline_months"] == 24
+    assert any(m["title"] == "Driving exam at 18" for m in teen["future_timeline"])
+    assert teen["life_phase"]["value"] == "school"
+    # A teenager's pocket money goes to their own goal, not an adult buffer,
+    # and retirement is not on their timeline.
+    assert goal_ids(teen) == {"driving_licence"}
+    assert not any(m["title"].startswith("Retirement") for m in teen["future_timeline"])
+
+    lotte = client.get(f"/api/twins/{HERO_A}").json()
+    assert "house_deposit" in goal_ids(lotte)
+
+
+def test_customer_can_remove_and_restore_a_goal(client):
+    removed = client.post(f"/api/twins/{HERO_A}/corrections",
+                          json={"field": "goal_removed:house_deposit", "value": True}).json()["twin"]
+    assert "house_deposit" not in goal_ids(removed)
+    assert not any("deposit" in m["title"].lower() for m in removed["future_timeline"])
+
+    restored = client.post(f"/api/twins/{HERO_A}/corrections",
+                           json={"field": "goal_removed:house_deposit", "value": False}).json()["twin"]
+    assert "house_deposit" in goal_ids(restored)
+
+
+def test_customer_can_add_and_delete_their_own_goal(client):
+    body = {"field": "custom_goal:world_trip",
+            "value": {"title": "Travel around the world", "target_amount": 15000}}
+    twin = client.post(f"/api/twins/{HERO_B}/corrections", json=body).json()["twin"]
+    trip = next(g for g in twin["goals"] if g["id"] == "world_trip")
+    assert trip["source"] == "custom" and trip["provenance"] == "declared"
+    assert trip["target_amount"] == 15000
+    # One pot of money: the new goal takes a share, it does not invent savings.
+    assert sum(g["monthly_contribution"] for g in twin["goals"]) <= \
+        twin["derived_features"]["monthly_savings_contribution"] + 0.05
+
+    twin = client.post(f"/api/twins/{HERO_B}/corrections",
+                       json={"field": "custom_goal:world_trip", "value": None}).json()["twin"]
+    assert "world_trip" not in goal_ids(twin)
+
+    bad = client.post(f"/api/twins/{HERO_B}/corrections",
+                      json={"field": "custom_goal:x", "value": {"title": "", "target_amount": 0}})
+    assert bad.status_code == 400

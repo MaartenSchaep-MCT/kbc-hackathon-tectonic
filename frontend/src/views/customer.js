@@ -21,6 +21,7 @@ const NAV = [
 
 const WHAT_IF_DEFAULT = { extra: 0, sabbatical: false };
 const SABBATICAL_MONTHS = 6;
+const FAR_AWAY_MONTHS = 25 * 12;      // beyond this a date is noise, not a plan
 const YEARS_IN_RETIREMENT = 20;
 
 export const customerState = {
@@ -221,11 +222,15 @@ function headline(twin, meta, whatIf) {
   const p = project(twin, whatIf);
   const ref = meta?.reference_date;
   const next = twin.goals
-    .filter((g) => p.goals[g.id] && !p.goals[g.id].reached && p.goals[g.id].months)
+    .filter((g) => p.goals[g.id] && !p.goals[g.id].reached
+      && p.goals[g.id].months && p.goals[g.id].months <= FAR_AWAY_MONTHS)
     .sort((a, b) => p.goals[a.id].months - p.goals[b.id].months)[0];
   // Close to retirement, that is the question that matters most.
   if (next && p.retirement.yearsLeft > 10) {
-    return `At this pace, your ${next.title.toLowerCase()} of ${money(next.target_amount)} is ready in ${monthLabel(ref, p.goals[next.id].months)}.`;
+    const months = p.goals[next.id].months;
+    const sentence = `At this pace, your ${next.title.toLowerCase()} of ${money(next.target_amount)} is ready in ${monthLabel(ref, months)}.`;
+    if (next.deadline && months > next.deadline_months) return `${sentence} You need it by ${next.deadline}.`;
+    return sentence;
   }
   return `Retirement in ${p.retirement.year}: you're on track for ${money(p.retirement.monthlyIncome)} a month, ${pct(p.retirement.incomeShare)} of your current income.`;
 }
@@ -323,23 +328,34 @@ function renderTimeline(twin, meta) {
       const b = base.goals[goal.id] || {};
       const delta = g.months != null && b.months != null ? g.months - b.months : 0;
       const eventMove = customerState.moves[goal.id];
+      const late = goal.deadline_months && g.months > goal.deadline_months
+        ? g.months - goal.deadline_months : 0;
+      const farAway = g.months > FAR_AWAY_MONTHS;
+      let detail = `${money(goal.current_amount)} saved. Putting aside ${money(g.monthly)} a month.`;
+      if (!g.months) detail = "Nothing is being put aside for this yet.";
+      else if (farAway) detail = `At ${money(g.monthly)} a month this takes over ${FAR_AWAY_MONTHS / 12} years. Try "What if" above.`;
+      else if (goal.deadline) {
+        detail += late
+          ? ` You need it by ${goal.deadline}: ${moveLabel(late)} at this pace.`
+          : ` Ready in time for ${goal.deadline}.`;
+      }
       return timelineItem({
-        date: g.months ? monthLabel(ref, g.months) : "No date yet",
-        icon: goal.id === "house_deposit" ? Icon.house : Icon.shield,
+        date: !g.months || farAway ? "Not in sight yet" : monthLabel(ref, g.months),
+        icon: goalIcon(goal),
         title: `${goal.title}: ${money(goal.target_amount)}`,
-        detail: g.months
-          ? `${money(goal.current_amount)} saved. Putting aside ${money(g.monthly)} a month.`
-          : "Nothing is being put aside for this yet.",
+        detail,
         progress: goal.current_amount / goal.target_amount,
+        warn: late > 0 || farAway,
         badge: moveLabel(delta),
         eventBadge: moveLabel(eventMove),
         eventGood: eventMove < 0,
-        tag: assumption ? "We guessed you want this" : "",
+        tag: assumption ? "We guessed you want this"
+          : goal.source === "stage" ? "Added for your stage of life" : "",
       });
     }
 
     return timelineItem({
-      date: m.date_label, icon: Icon.route, title: euro(m.title), detail: euro(m.detail),
+      date: m.date_label, icon: goalIcon({ id: "", title: m.title }), title: euro(m.title), detail: euro(m.detail),
       tag: m.provenance === "inferred" ? "Our guess" : "",
     });
   });
@@ -391,18 +407,63 @@ function renderAbout({ twin, meta }) {
   const phases = meta?.life_phases || {};
   const r = twin.derived_features.retirement || {};
   const household = twin.household;
-  const houseGoal = twin.goals.find((g) => g.id === "house_deposit");
-  const plansHouse = findCorrection(twin, "plans_to_buy_house");
-  const family = findCorrection(twin, "family_expansion");
   const guesses = openGuesses(twin);
+  const goals = twin.goals.filter((g) => g.id !== "retirement_readiness");
+  const removed = removedGoals(twin);
+  const presets = GOAL_PRESETS.filter((p) => !twin.goals.some((g) => g.title === p.title));
 
   return `
     <div class="fm-hello">
       <div class="fm-hello__kicker">About me</div>
       <div class="fm-hello__title">Your future is built on this</div>
-      <p class="fm-hello__sub">Some of it you told us, some of it is our guess. Your answers always win.</p>
+      <p class="fm-hello__sub">We filled in your plan for your stage of life. Change anything that doesn't fit.</p>
     </div>
 
+    <h2 class="m-section">Your goals</h2>
+    <section class="m-list">
+      ${goals.length ? goals.map((g) => `
+        <div class="m-row">
+          <span class="m-row__icon">${goalIcon(g)}</span>
+          <div class="m-row__main">
+            <div class="m-row__label">${h(g.title)}</div>
+            <div class="m-row__hint">${h(goalSourceLabel(g))}</div>
+          </div>
+          <div class="m-amount">
+            <span>€</span>
+            <input type="number" min="100" step="100" value="${Math.round(g.target_amount)}"
+                   data-goal-target="${h(g.id)}" aria-label="Target for ${h(g.title)}">
+          </div>
+          <button class="m-remove" aria-label="Remove ${h(g.title)}"
+                  ${g.source === "custom" ? `data-delete-custom="${h(g.id)}"` : `data-remove-goal="${h(g.id)}"`}>${Icon.close}</button>
+        </div>`).join("") : `
+        <div class="m-row"><div class="m-row__hint">No goals yet. Add one below.</div></div>`}
+    </section>
+
+    ${removed.length ? `
+      <div class="m-removed">
+        Removed: ${removed.map((g) => `
+          <span>${h(g.title)} <button class="m-link" data-restore-goal="${h(g.field)}">Put back</button></span>`).join("")}
+      </div>` : ""}
+
+    <h2 class="m-section">Add a goal</h2>
+    <section class="m-add">
+      ${presets.length ? `
+        <div class="m-presets">
+          ${presets.map((p) => `
+            <button class="m-preset" data-add-preset="${h(p.id)}">${Icon[p.icon]}${h(p.title)}</button>`).join("")}
+        </div>` : ""}
+      <form class="m-custom" data-custom-goal="1">
+        <input type="text" name="title" placeholder="Something else, e.g. a new bike" maxlength="40" required
+               aria-label="Goal name">
+        <div class="m-amount">
+          <span>€</span>
+          <input type="number" name="amount" min="100" step="100" placeholder="0" required aria-label="Amount">
+        </div>
+        <button class="kbc-btn kbc-btn--primary kbc-btn--sm" type="submit">Add</button>
+      </form>
+    </section>
+
+    <h2 class="m-section">About you</h2>
     <section class="m-list">
       <div class="m-row">
         <div class="m-row__main">
@@ -425,35 +486,16 @@ function renderAbout({ twin, meta }) {
           <div class="m-row__value">${h(householdLabel(household))}</div>
         </div>
       </div>
-    </section>
-
-    <h2 class="m-section">Your plans</h2>
-    <section class="m-list">
-      ${yesNoRow("Buy a home", "plans_to_buy_house", plansHouse,
-        plansHouse === undefined ? "We guessed this from how you save." : "You told us.")}
-      ${yesNoRow("Grow our family", "family_expansion", family,
-        family === undefined ? "Only you can tell us this." : "You told us.")}
-      <div class="m-row">
-        <div class="m-row__main">
-          <div class="m-row__label">Retire at</div>
-          <div class="m-row__hint">${r.retirement_age_source === "declared" ? "You told us." : "65 is our guess."}</div>
-        </div>
-        <div class="m-stepper">
-          <button data-step="-1" aria-label="Retire a year earlier">${Icon.minus}</button>
-          <span>${r.target_retirement_age}</span>
-          <button data-step="1" aria-label="Retire a year later">${Icon.plus}</button>
-        </div>
-      </div>
-      ${houseGoal ? `
+      ${twin.observed_facts.age >= 18 ? `
         <div class="m-row">
           <div class="m-row__main">
-            <div class="m-row__label">Home deposit I need</div>
-            <div class="m-row__hint">${houseGoal.provenance === "declared" ? "You set this." : "Our estimate."}</div>
+            <div class="m-row__label">Retire at</div>
+            <div class="m-row__hint">${r.retirement_age_source === "declared" ? "You told us." : `${r.target_retirement_age} is our guess.`}</div>
           </div>
-          <div class="m-amount">
-            <span>€</span>
-            <input type="number" min="1000" step="1000" value="${Math.round(houseGoal.target_amount)}"
-                   data-goal-target="${h(houseGoal.id)}" aria-label="Home deposit target">
+          <div class="m-stepper">
+            <button data-step="-1" aria-label="Retire a year earlier">${Icon.minus}</button>
+            <span>${r.target_retirement_age}</span>
+            <button data-step="1" aria-label="Retire a year later">${Icon.plus}</button>
           </div>
         </div>` : ""}
     </section>
@@ -472,21 +514,54 @@ function renderAbout({ twin, meta }) {
       </section>` : ""}
 
     ${twin.corrections.length ? `
-      <button class="m-link m-link--center" data-clear-corrections="1">Undo my ${twin.corrections.length} answer${twin.corrections.length > 1 ? "s" : ""}</button>` : ""}`;
+      <button class="m-link m-link--center" data-clear-corrections="1">Undo all my changes</button>` : ""}`;
 }
 
-function yesNoRow(label, field, value, hint) {
-  return `
-    <div class="m-row">
-      <div class="m-row__main">
-        <div class="m-row__label">${h(label)}</div>
-        <div class="m-row__hint">${h(hint)}</div>
-      </div>
-      <div class="segmented" role="group" data-segmented="${h(field)}">
-        <button type="button" data-value="true" aria-pressed="${value === true}">Yes</button>
-        <button type="button" data-value="false" aria-pressed="${value === false}">No</button>
-      </div>
-    </div>`;
+/* --- goals: presets, icons, labels -------------------------------------- */
+const GOAL_PRESETS = [
+  { id: "world_trip", title: "Travel around the world", amount: 15000, icon: "globe" },
+  { id: "car", title: "A car", amount: 12000, icon: "car" },
+  { id: "wedding", title: "Wedding", amount: 20000, icon: "heart" },
+  { id: "sabbatical", title: "Sabbatical", amount: 10000, icon: "sun" },
+];
+
+const GOAL_TITLES = {
+  house_deposit: "Home deposit", driving_licence: "Driving licence",
+  emergency_fund: "Emergency fund", family_buffer: "Family buffer",
+  shared_buffer: "Shared household buffer", renovation_budget: "Renovation budget",
+  education_fund: "Education fund",
+};
+
+function goalIcon(goal) {
+  const text = `${goal.id} ${goal.title}`.toLowerCase();
+  if (/house|home/.test(text)) return Icon.house;
+  if (/driv|car\b|^car/.test(text)) return Icon.car;
+  if (/travel|trip|world|holiday/.test(text)) return Icon.globe;
+  if (/wedding/.test(text)) return Icon.heart;
+  if (/sabbatical|retire/.test(text)) return Icon.sun;
+  if (/buffer|emergency|stabilise/.test(text)) return Icon.shield;
+  return Icon.target;
+}
+
+function goalSourceLabel(goal) {
+  if (goal.provenance === "declared" && goal.source !== "custom") return "Amount set by you";
+  return {
+    stage: "Added for your stage of life",
+    custom: "You added this",
+  }[goal.source] || "Based on your spending";
+}
+
+function removedGoals(twin) {
+  const out = twin.corrections
+    .filter((c) => c.field.startsWith("goal_removed:") && c.value === true)
+    .map((c) => {
+      const id = c.field.split(":")[1];
+      return { field: c.field, title: GOAL_TITLES[id] || id.replace(/_/g, " ") };
+    });
+  if (findCorrection(twin, "plans_to_buy_house") === false && !out.some((g) => g.field.endsWith("house_deposit"))) {
+    out.push({ field: "plans_to_buy_house", title: "Home deposit" });
+  }
+  return out;
 }
 
 function householdLabel(household) {
@@ -509,7 +584,6 @@ function renderPresenter({ meta, personas }) {
   const persona = personas.find((p) => p.customer_id === customerState.customerId);
   const actions = meta?.demo_actions || [];
   const suggested = persona?.story?.demo_action;
-  const ordered = [...actions].sort((a, b) => (b.key === suggested) - (a.key === suggested));
   const e = customerState.lastEvent;
 
   return `
@@ -523,12 +597,11 @@ function renderPresenter({ meta, personas }) {
 
     <div class="presenter__label">Something happens in real life</div>
     <div class="presenter__events">
-      ${ordered.map((a) => `
-        <button class="presenter__event ${a.key === suggested ? "presenter__event--suggested" : ""}"
-                data-inject="${h(a.key)}" ${customerState.busy ? "disabled" : ""}>
-          <span class="presenter__event-label">${h(eventLabel(a))}</span>
-          <span class="presenter__event-amount">${a.amount > 0 ? "+" : ""}${money(a.amount)}</span>
-        </button>`).join("")}
+      ${actions.filter((a) => a.key === suggested).map((a) => eventButton(a, true)).join("")}
+      <details class="presenter__more">
+        <summary>More events</summary>
+        <div class="presenter__events">${actions.filter((a) => a.key !== suggested).map((a) => eventButton(a)).join("")}</div>
+      </details>
     </div>
 
     <div class="presenter__result" id="presenter-result">
@@ -544,12 +617,22 @@ function renderPresenter({ meta, personas }) {
   </aside>`;
 }
 
+function eventButton(action, suggested = false) {
+  return `
+    <button class="presenter__event ${suggested ? "presenter__event--suggested" : ""}"
+            data-inject="${h(action.key)}" ${customerState.busy ? "disabled" : ""}>
+      <span class="presenter__event-label">${h(eventLabel(action))}</span>
+      <span class="presenter__event-amount">${action.amount > 0 ? "+" : ""}${money(action.amount)}</span>
+    </button>`;
+}
+
 function eventLabel(action) {
   return {
     "first-salary": "Second salary arrives",
     "crib-purchase": "Buys a crib",
     "large-expense": "Pays for a new kitchen",
     "savings-contribution": "Moves money to savings",
+    "birthday-money": "Saves birthday money",
   }[action.key] || action.label.replace(/^Inject /, "");
 }
 
@@ -589,9 +672,26 @@ export function bindCustomer(root, ctx, refresh) {
   on("select[data-field='life_phase']", "change", (e) =>
     saveCorrection("life_phase", e.target.value, ctx, refresh));
 
-  on("[data-segmented] button", "click", (e) => {
-    const field = e.currentTarget.closest("[data-segmented]").dataset.segmented;
-    saveCorrection(field, e.currentTarget.dataset.value === "true", ctx, refresh);
+  on("[data-remove-goal]", "click", (e) =>
+    saveCorrection(`goal_removed:${e.currentTarget.dataset.removeGoal}`, true, ctx, refresh, "Goal removed."));
+
+  on("[data-delete-custom]", "click", (e) =>
+    saveCorrection(`custom_goal:${e.currentTarget.dataset.deleteCustom}`, null, ctx, refresh, "Goal removed."));
+
+  on("[data-restore-goal]", "click", (e) => {
+    const field = e.currentTarget.dataset.restoreGoal;
+    saveCorrection(field, field === "plans_to_buy_house" ? true : false, ctx, refresh, "Goal is back in your plan.");
+  });
+
+  on("[data-add-preset]", "click", (e) => {
+    const preset = GOAL_PRESETS.find((p) => p.id === e.currentTarget.dataset.addPreset);
+    addGoal(preset.title, preset.amount, ctx, refresh);
+  });
+
+  on("[data-custom-goal]", "submit", (e) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    addGoal(form.title.value.trim(), Number(form.amount.value), ctx, refresh);
   });
 
   on("[data-step]", "click", (e) => {
@@ -674,13 +774,22 @@ function compareWith(ctx) {
   before = null;
 }
 
-async function saveCorrection(field, value, ctx, refresh) {
+function addGoal(title, amount, ctx, refresh) {
+  if (!title || !(amount > 0)) return;
+  const base = title.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "goal";
+  let id = base;
+  for (let n = 2; ctx.twin.goals.some((g) => g.id === id); n += 1) id = `${base}_${n}`;
+  saveCorrection(`custom_goal:${id}`, { title, target_amount: amount }, ctx, refresh,
+    `${title} is on your timeline.`);
+}
+
+async function saveCorrection(field, value, ctx, refresh, message = "Saved. Your future is updated.") {
   try {
     snapshot(ctx);
     await api.correct(customerState.customerId, field, value, "Set by me");
     await refresh({ reload: true });
     compareWith(ctx);
-    toast("Saved. Your future is updated.");
+    toast(message);
     refresh();
   } catch (error) {
     toast(`Could not save: ${error.message}`);

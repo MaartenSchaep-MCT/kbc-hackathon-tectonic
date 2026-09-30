@@ -73,10 +73,21 @@ The phone has three tabs:
   ready in July 2032"), a **What if…** panel and the timeline. The panel has a
   slider to save more each month and a 6-month sabbatical toggle. Both only
   preview the change and save nothing.
-- **About me**: what the plan is built on. Stage of life (with the reasons for
-  our guess), plans such as buying a home, growing the family and retirement
-  age, and the guesses we're unsure about. The customer's answers always
-  override our guesses.
+- **About me**: what the plan is built on.
+  - **Your goals**: filled in automatically for the customer's stage of life.
+    For example, a home deposit for renters aged 20 to 45, or a driving licence
+    for teenagers (lessons from 17, exam at 18). Each goal can be changed or removed with ×, and put back
+    later.
+  - **Add a goal**: one-tap presets (travel around the world, a car, a wedding,
+    a sabbatical) or a goal of your own with a name and an amount.
+  - **About you**: stage of life (with the reasons for our guess), household
+    and retirement age. Below that, the guesses we're unsure about.
+
+**Noah, 15, Hasselt: driving licence.** In Belgium you can learn to drive from
+17 and take the practical exam at 18. His plan starts with a driving licence
+(€1,500) that he needs by 17, when lessons start. The timeline also shows the
+exam at 18. Saving €40 of pocket money a month, he has the money in time. The
+**What if** slider and **Saves birthday money** bring that date closer.
 
 **Lotte, 23, Leuven: first job.** She has had exactly one salary payment, so we
 don't count it as a pattern yet. Click **Second salary arrives** and "First
@@ -157,7 +168,7 @@ python scripts/benchmark.py --customers 250000 --events 12
 ## Tests
 
 ```bash
-cd backend && python -m pytest    # 27 tests
+cd backend && python -m pytest    # 30 tests
 ./scripts/smoke_test.sh           # end-to-end checks against a running stack
 ```
 
@@ -173,7 +184,7 @@ backend/app/
   twin_engine.py    goals, timeline, projections, corrections
   llm.py            Tier 3: Claude or template
   playbooks.py      suggested actions per life moment
-  personas.py       the three demo customers
+  personas.py       the four demo customers
   seed.py           1,000 synthetic customers
   event_bus.py      in-process event queue
   benchmark.py      throughput and cost model

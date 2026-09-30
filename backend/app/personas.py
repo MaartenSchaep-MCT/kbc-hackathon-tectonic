@@ -12,9 +12,9 @@ depends on precise "before" states:
                 exactly 78% - still an assumption, and correctable.
   C  Marc     - a full pension picture, so a single large expense or an extra
                 monthly contribution visibly moves the projection.
-  D  Noah     - 15, saving pocket money for a driving licence at 16. At his
-                pace he gets there a few months late, so birthday money or the
-                "what if" slider visibly pulls the date in.
+  D  Noah     - 15, saving pocket money for driving lessons at 17 and the
+                exam at 18 (the Belgian ages). Birthday money or the "what if"
+                slider visibly pulls the date in.
 
 Every amount is synthetic.
 """
@@ -354,10 +354,10 @@ HERO_ORDER = ["KBC-HERO-D", "KBC-HERO-A", "KBC-HERO-B", "KBC-HERO-C"]
 
 HERO_STORIES = {
     "KBC-HERO-D": {
-        "headline": "Noah wants to drive at 16",
+        "headline": "Noah wants to drive at 18",
         "setup": "He saves EUR 40 of his pocket money each month for driving lessons.",
         "demo_action": "birthday-money",
-        "watch_for": "The driving licence date moves closer to his 16th birthday.",
+        "watch_for": "Lessons start at 17. The money for them is ready sooner.",
     },
     "KBC-HERO-A": {
         "headline": "Lotte just graduated",
