@@ -45,24 +45,10 @@ export const Icon = {
 };
 
 /* ==========================================================================
-   KbcHeader
+   KbcHeader - customer switcher only; the app has no chrome of its own
    ========================================================================== */
-export function KbcHeader({ tabs, active, personas = [], customerId }) {
+export function KbcHeader({ personas = [], customerId }) {
   return `
-    <header class="kbc-appbar">
-      <span class="kbc-wordmark">
-        <span class="kbc-wordmark__mark">KBC</span>
-        Future Me
-      </span>
-      <nav class="kbc-tabs" role="tablist" aria-label="View">
-        ${tabs.map((t) => `
-          <button class="kbc-tab" role="tab" data-route="${h(t.id)}"
-                  aria-selected="${t.id === active}">
-            <span class="kbc-tab__long">${h(t.label)}</span>
-            <span class="kbc-tab__short">${h(t.short || t.label)}</span>
-          </button>`).join("")}
-      </nav>
-    </header>
     ${personas.length ? `
       <div class="persona-bar" role="group" aria-label="Customer">
         ${personas.map((p) => `

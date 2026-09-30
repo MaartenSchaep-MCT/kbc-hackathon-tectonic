@@ -1,6 +1,5 @@
-/* Thin API client. Every call goes to the ONE shared Twin API - the customer
-   app, the advisor view and the architecture page all use this same module,
-   which is the point being demonstrated. */
+/* Thin API client. Every call goes to the ONE shared Twin API, which is the
+   point being demonstrated. */
 
 const BASE = "/api";
 
@@ -22,10 +21,7 @@ export const api = {
   health:        ()            => request("/health"),
   meta:          ()            => request("/meta"),
   personas:      ()            => request("/personas"),
-  architecture:  ()            => request("/architecture"),
   playbooks:     ()            => request("/playbooks"),
-  benchmark:     ()            => request("/benchmark"),
-  cost:          ()            => request("/cost"),
   pipeline:      (limit = 8)   => request(`/pipeline?limit=${limit}`),
 
   customers: (search = "", limit = 40) =>
@@ -33,7 +29,6 @@ export const api = {
   customer: (id) => request(`/customers/${id}`),
 
   twin:  (id, open = false) => request(`/twins/${id}${open ? "?open=true" : ""}`),
-  advisor: (id)             => request(`/advisor/${id}`),
   history: (id)             => request(`/twins/${id}/history`),
   corrections: (id)         => request(`/twins/${id}/corrections`),
 

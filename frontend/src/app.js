@@ -1,7 +1,7 @@
 /* ==========================================================================
-   App shell: routing, data loading, re-render.
+   App shell: data loading, re-render.
 
-   Deliberately a ~200-line vanilla router rather than a framework. It keeps
+   Deliberately vanilla rather than a framework. It keeps
    the prototype buildless (no npm, no bundler, no node_modules in the image)
    which is the single biggest reduction in setup complexity available here.
    ========================================================================== */
@@ -9,37 +9,22 @@
 import { api } from "./api.js";
 import { KbcHeader, toast } from "./components.js";
 import {
-  bindArchitecture, renderArchitecture,
-} from "./views/architecture.js";
-import { bindAdvisor, renderAdvisor } from "./views/advisor.js";
-import {
   bindCustomer, customerState, renderCustomer, resetCustomerState,
 } from "./views/customer.js";
 
-const TABS = [
-  { id: "customer",     label: "Customer app",   short: "App" },
-  { id: "advisor",      label: "Advisor",        short: "Advisor" },
-  { id: "architecture", label: "How it scales",  short: "Scale" },
-];
-
 const ctx = {
-  route: "customer",
   meta: null,
   health: null,
   personas: [],
   twin: null,
   customer: null,
-  advisor: null,
-  architecture: null,
-  benchmark: null,
-  cost: null,
   customerTwinVersion: null,
 };
 
 const root = document.getElementById("app");
 
 /* ==========================================================================
-   Data loading - only what the active route needs
+   Data loading
    ========================================================================== */
 async function loadShared() {
   const [meta, health, personas] = await Promise.all([
@@ -55,43 +40,20 @@ async function loadShared() {
 
 async function loadRoute() {
   const id = customerState.customerId;
-  if (ctx.route === "customer" && id) {
-    const [twin, customer] = await Promise.all([
-      api.twin(id, !ctx.twin),      // ?open=true only on first open (Tier 3 trigger)
-      api.customer(id),
-    ]);
-    ctx.twin = twin;
-    ctx.customer = customer;
-    ctx.customerTwinVersion = twin.version;
-  } else if (ctx.route === "advisor" && id) {
-    const [advisor, twin] = await Promise.all([api.advisor(id), api.twin(id)]);
-    ctx.advisor = advisor;
-    ctx.customerTwinVersion = twin.version;
-  } else if (ctx.route === "architecture") {
-    const [architecture, benchmark, cost] = await Promise.all([
-      api.architecture(), api.benchmark(), api.cost(),
-    ]);
-    ctx.architecture = architecture;
-    ctx.benchmark = benchmark;
-    ctx.cost = cost;
-  }
+  if (!id) return;
+  const [twin, customer] = await Promise.all([
+    api.twin(id, !ctx.twin),      // ?open=true only on first open (Tier 3 trigger)
+    api.customer(id),
+  ]);
+  ctx.twin = twin;
+  ctx.customer = customer;
+  ctx.customerTwinVersion = twin.version;
 }
 
 /* ==========================================================================
    Render
    ========================================================================== */
-function renderRoute() {
-  switch (ctx.route) {
-    case "advisor":      return renderAdvisor(ctx);
-    case "architecture": return renderArchitecture(ctx);
-    default:             return renderCustomer(ctx);
-  }
-}
-
 function bindRoute() {
-  root.querySelectorAll("[data-route]").forEach((el) =>
-    el.addEventListener("click", () => navigate(el.dataset.route)));
-
   root.querySelectorAll("[data-persona]").forEach((el) =>
     el.addEventListener("click", async () => {
       if (el.dataset.persona === customerState.customerId) return;
@@ -100,17 +62,13 @@ function bindRoute() {
       await refresh({ reload: true, resetScroll: true });
     }));
 
-  switch (ctx.route) {
-    case "advisor":      bindAdvisor(root, ctx, refresh); break;
-    case "architecture": bindArchitecture(root, ctx, refresh); break;
-    default:             bindCustomer(root, ctx, refresh); break;
-  }
+  bindCustomer(root, ctx, refresh);
 }
 
 /**
  * Re-render.
- *  reload      - refetch route data first
- *  resetScroll - start the phone at the top (new tab or new customer)
+ *  reload      - refetch data first
+ *  resetScroll - start the phone at the top (new customer)
  */
 async function refresh({ reload = false, resetScroll = false } = {}) {
   if (reload) {
@@ -123,29 +81,19 @@ async function refresh({ reload = false, resetScroll = false } = {}) {
 
   const scroll = resetScroll ? 0 : root.querySelector("#phone-scroll")?.scrollTop ?? 0;
   root.innerHTML = KbcHeader({
-    tabs: TABS, active: ctx.route,
     personas: ctx.personas, customerId: customerState.customerId,
-  }) + renderRoute();
+  }) + renderCustomer(ctx);
   const scroller = root.querySelector("#phone-scroll");
   if (scroller) scroller.scrollTop = scroll;
   bindRoute();
 }
 
-async function navigate(route) {
-  if (route === ctx.route) return;
-  ctx.route = route;
-  await refresh({ reload: true });
-  window.scrollTo({ top: 0, behavior: "smooth" });
-}
 
 /* ==========================================================================
    Boot
    ========================================================================== */
 async function boot() {
   root.innerHTML = `
-    <div class="kbc-appbar">
-      <span class="kbc-wordmark"><span class="kbc-wordmark__mark">KBC</span> Future Me</span>
-    </div>
     <div class="page"><div class="page__inner stack">
       <div class="skeleton" style="height:120px"></div>
       <div class="skeleton" style="height:320px"></div>

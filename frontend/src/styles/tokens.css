@@ -121,7 +121,6 @@
   /* ---- layout ---------------------------------------------------------- */
   --phone-width:    390px;   /* required viewport 390 x 844 */
   --phone-height:   844px;
-  --header-height:  56px;
   --bottomnav-height: 64px;
   --desktop-max:   1360px;
 }
