@@ -1,0 +1,50 @@
+# Financial Twin - the whole prototype.
+#
+#   docker compose up --build   ->   http://localhost:3000
+#
+# Two services only. No Kafka, no Redis, no Postgres: the point of the
+# prototype is that the architecture is credible at scale, not that the local
+# stack is large. See the Architecture page for what each piece becomes.
+
+services:
+  backend:
+    build: ./backend
+    container_name: twin-backend
+    environment:
+      # --- Tier 3. Entirely optional: without it, deterministic templates. ---
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      TWIN_LLM_MODEL: ${TWIN_LLM_MODEL:-claude-opus-5-5}
+      # --- synthetic data ---
+      TWIN_DB_PATH: /data/twin.db
+      TWIN_SEED: ${TWIN_SEED:-42}
+      TWIN_CUSTOMERS: ${TWIN_CUSTOMERS:-1000}
+      TWIN_MONTHS: ${TWIN_MONTHS:-12}
+      # --- benchmark: measured at startup, off the request path ---
+      TWIN_BENCHMARK_CUSTOMERS: ${TWIN_BENCHMARK_CUSTOMERS:-100000}
+      TWIN_BENCHMARK_EVENTS_PER_CUSTOMER: ${TWIN_BENCHMARK_EVENTS_PER_CUSTOMER:-12}
+      TWIN_TARGET_POPULATION: ${TWIN_TARGET_POPULATION:-2300000}
+      TWIN_BENCHMARK_ON_STARTUP: ${TWIN_BENCHMARK_ON_STARTUP:-1}
+      TWIN_BENCHMARK_PRODUCTION_WORKERS: ${TWIN_BENCHMARK_PRODUCTION_WORKERS:-20}
+      # --- cost model assumptions (README "Cost") ---
+      TWIN_LLM_PRICE_INPUT_PER_MTOK: ${TWIN_LLM_PRICE_INPUT_PER_MTOK:-4.00}
+      TWIN_LLM_PRICE_OUTPUT_PER_MTOK: ${TWIN_LLM_PRICE_OUTPUT_PER_MTOK:-20.00}
+      TWIN_ASSUMPTION_DAILY_APP_OPEN_RATE: ${TWIN_ASSUMPTION_DAILY_APP_OPEN_RATE:-0.05}
+      TWIN_ASSUMPTION_MONTHLY_TWIN_CHANGE_RATE: ${TWIN_ASSUMPTION_MONTHLY_TWIN_CHANGE_RATE:-0.10}
+    volumes:
+      - twin-data:/data
+    ports:
+      - "8000:8000"        # the Twin API, also reachable directly
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: twin-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  twin-data:

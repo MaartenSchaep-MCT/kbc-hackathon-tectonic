@@ -1,0 +1,127 @@
+/* ==========================================================================
+   KBC Design Language (KDL) - design tokens
+   ==========================================================================
+   Sourced from KBC's own public token file, not from memory:
+     https://wcmassets.kbc.be/etc.clientlibs/kbc/components/kdl-design-tokens.latest.min.css
+   Component shapes (pill buttons, card shadow, radii) come from:
+     .../kbc/components/websites/cta-button.min.css
+     .../settings/wcm/designs/particulieren/clientlibs/main.min.css
+
+   Names below mirror KDL's own semantic names so the mapping is auditable.
+   This is a hackathon prototype and not an official KBC product.
+   ========================================================================== */
+
+:root {
+  /* ---- brand ------------------------------------------------------------ */
+  --kbc-primary:            #0D2A50;  /* kdl-color-primary-main   - navy      */
+  --kbc-primary-dark:       #021E43;  /* kdl-color-primary-main-600           */
+  --kbc-primary-300:        #45658F;  /* kdl-color-func-text-light            */
+  --kbc-primary-200:        #7394C2;  /* kdl-color-primary-main-200           */
+  --kbc-primary-150:        #91B3E3;  /* kdl-color-primary-main-150           */
+  --kbc-primary-100:        #BFDAFF;  /* kdl-color-func-border / divider      */
+  --kbc-primary-25:         #EFF6FF;  /* kdl-color-primary-main-25            */
+
+  --kbc-accent:             #0097DB;  /* kdl-color-primary-accent - KBC blue  */
+  --kbc-accent-hover:       #007AB1;  /* kdl-color-primary-accent-600         */
+  --kbc-accent-100:         #E5F4FF;  /* kdl-color-primary-accent-100         */
+  --kbc-accent-25:          #F2FAFF;  /* kdl-color-primary-accent-25          */
+
+  /* ---- surfaces -------------------------------------------------------- */
+  --kbc-background:         #F2FAFF;  /* kdl-color-func-background-dashboard  */
+  --kbc-background-grey:    #F2F2F2;  /* kdl-color-surface-background         */
+  --kbc-surface:            #FFFFFF;  /* kdl-color-background-default         */
+  --kbc-surface-element:    #F2FAFF;  /* kdl-color-surface-element            */
+
+  /* ---- text ------------------------------------------------------------ */
+  --kbc-text-primary:       #0D2A50;  /* kdl-color-func-text                  */
+  --kbc-text-secondary:     #45658F;  /* kdl-color-func-text-light            */
+  --kbc-text-disabled:      #7394C2;  /* kdl-color-func-text-disabled         */
+  --kbc-text-on-dark:       #FFFFFF;
+  --kbc-border:             #BFDAFF;  /* kdl-color-func-border                */
+  --kbc-divider:            #BFDAFF;  /* kdl-color-func-divider               */
+
+  /* ---- system / status ------------------------------------------------- */
+  --kbc-success:            #5BA215;  /* kdl-color-system-success             */
+  --kbc-success-300:        #8CD656;
+  --kbc-success-25:         #EEFFE4;
+  --kbc-warning:            #DC7507;  /* kdl-color-system-warning             */
+  --kbc-warning-300:        #FFA663;
+  --kbc-warning-25:         #FFF7F1;
+  --kbc-danger:             #D64040;  /* kdl-color-system-error               */
+  --kbc-danger-300:         #EB5552;
+  --kbc-danger-25:          #FFF6F5;
+  --kbc-info:               #0D2A50;  /* kdl-color-system-info                */
+  --kbc-info-25:            #EFF6FF;
+  --kbc-sustainability:     #1DB955;  /* kdl-color-sustainability-green       */
+
+  /* ---- KBC channel colours (kdl-color-os-*) ---------------------------- */
+  /* Used for the "one Twin, many channels" story - these are KBC's own
+     per-channel colours, so the channel chips are recognisably KBC.        */
+  --kbc-channel-mobile:     #1FADC1;  /* kdl-color-os-mobile                  */
+  --kbc-channel-kate:       #55C7DF;  /* kdl-color-os-kate                    */
+  --kbc-channel-live:       #1DA594;  /* kdl-color-os-live  (KBC Live)         */
+  --kbc-channel-visit:      #5387C5;  /* kdl-color-os-visit (branch/advisor)   */
+  --kbc-channel-core:       #0D2A50;
+  --kbc-channel-insurance:  #008571;  /* kdl-color-secondary-01               */
+  --kbc-channel-lending:    #F69D14;  /* kdl-color-tertiary-02                */
+
+  /* ---- category / chart palette (kdl-color-category-*) ----------------- */
+  --kbc-cat-01: #0097DB;  --kbc-cat-02: #D28308;  --kbc-cat-03: #F06B42;
+  --kbc-cat-04: #7C45B6;  --kbc-cat-05: #838A92;  --kbc-cat-06: #7F4E06;
+  --kbc-cat-07: #009985;  --kbc-cat-08: #EE6880;  --kbc-cat-09: #015CA6;
+  --kbc-cat-10: #7897B5;
+
+  /* ---- shape ----------------------------------------------------------- */
+  /* KBC's implemented CSS is dominated by 4px and 8px, with fully rounded
+     pills for every call to action.                                        */
+  --radius-sm:   4px;
+  --radius-md:   8px;
+  --radius-lg:   12px;
+  --radius-xl:   16px;
+  --radius-pill: 100px;
+
+  /* ---- spacing (4px rhythm) ------------------------------------------- */
+  --space-1:  4px;   --space-2:  8px;   --space-3: 12px;   --space-4: 16px;
+  --space-5: 20px;   --space-6: 24px;   --space-8: 32px;   --space-10: 40px;
+  --space-12: 48px;  --space-16: 64px;
+
+  /* ---- elevation (main.min.css: 0 4px 16px rgba(0,54,101,.08)) --------- */
+  --shadow-card:  0 4px 16px rgba(0, 54, 101, 0.08);
+  --shadow-raise: 0 4px 16px rgba(0, 54, 101, 0.16);
+  --shadow-nav:   0 -2px 12px rgba(0, 54, 101, 0.08);
+  --shadow-sheet: 0 -8px 32px rgba(0, 54, 101, 0.16);
+
+  /* ---- typography ------------------------------------------------------ */
+  /* KBC ships MuseoSans 300/500/700. It is a licensed typeface, so it is
+     referenced first (present on KBC machines) and Mulish - the closest
+     open geometric-humanist sans - is loaded as the substitute.            */
+  --font-family: "MuseoSans", "Mulish", -apple-system, BlinkMacSystemFont,
+                 "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SFMono-Regular", ui-monospace, "JetBrains Mono", Menlo,
+               Consolas, monospace;
+
+  --weight-light:   300;
+  --weight-regular: 500;   /* KBC's body weight is 500, not 400 */
+  --weight-bold:    700;
+
+  --text-display: 32px;  --text-display-lh: 38px;
+  --text-h1:      26px;  --text-h1-lh:      32px;
+  --text-h2:      20px;  --text-h2-lh:      26px;
+  --text-h3:      17px;  --text-h3-lh:      24px;
+  --text-body:    15px;  --text-body-lh:    22px;
+  --text-small:   13px;  --text-small-lh:   19px;
+  --text-micro:   11px;  --text-micro-lh:   15px;
+
+  /* ---- motion (cta-button.min.css: transition .22s ease-in-out) -------- */
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast:  120ms;
+  --duration:       220ms;
+  --duration-slow:  420ms;
+
+  /* ---- layout ---------------------------------------------------------- */
+  --phone-width:    390px;   /* required viewport 390 x 844 */
+  --phone-height:   844px;
+  --header-height:  56px;
+  --bottomnav-height: 64px;
+  --desktop-max:   1360px;
+}

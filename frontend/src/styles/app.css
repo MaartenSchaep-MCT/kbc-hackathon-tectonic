@@ -1,0 +1,704 @@
+/* ==========================================================================
+   Financial Twin - component layer, built on tokens.css only.
+   No raw colour, radius, spacing or font value appears below: every rule
+   references a token, so the whole prototype comes from one design system.
+   ========================================================================== */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  overflow-x: hidden;
+  font-family: var(--font-family);
+  font-weight: var(--weight-regular);
+  font-size: var(--text-body);
+  line-height: var(--text-body-lh);
+  color: var(--kbc-text-primary);
+  background: var(--kbc-background-grey);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, p, ul, ol, figure { margin: 0; }
+ul, ol { padding: 0; list-style: none; }
+button { font: inherit; color: inherit; }
+a { color: var(--kbc-accent); text-decoration: none; }
+a:hover { color: var(--kbc-accent-hover); text-decoration: underline; }
+
+:focus-visible {
+  outline: 2px solid var(--kbc-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ==========================================================================
+   App shell
+   ========================================================================== */
+.app { min-height: 100vh; display: flex; flex-direction: column; }
+
+/* --- top bar (KbcHeader, desktop chrome) --------------------------------- */
+.kbc-appbar {
+  position: sticky; top: 0; z-index: 40;
+  display: flex; align-items: center; gap: var(--space-6);
+  /* Without this the three tabs set a minimum width and the whole document
+     scrolls sideways on a phone, clipping every card. */
+  overflow: hidden;
+  height: var(--header-height);
+  padding: 0 var(--space-6);
+  background: var(--kbc-primary);
+  color: var(--kbc-text-on-dark);
+  box-shadow: var(--shadow-card);
+}
+.kbc-wordmark {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  font-weight: var(--weight-bold); font-size: var(--text-h3);
+  letter-spacing: 0.04em;
+}
+.kbc-wordmark__mark {
+  display: inline-grid; place-items: center;
+  width: 30px; height: 30px;
+  border-radius: var(--radius-sm);
+  background: var(--kbc-accent);
+  color: var(--kbc-text-on-dark);
+  font-size: var(--text-micro); font-weight: var(--weight-bold);
+  letter-spacing: 0.02em;
+}
+.kbc-wordmark__sub {
+  font-weight: var(--weight-light); font-size: var(--text-small);
+  color: var(--kbc-primary-150); letter-spacing: 0;
+}
+
+/* --- primary channel tabs ------------------------------------------------ */
+.kbc-tabs {
+  display: flex; gap: var(--space-1); margin-left: auto;
+  overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.kbc-tabs::-webkit-scrollbar { display: none; }
+.kbc-tab__short { display: none; }
+.kbc-tab {
+  flex: 0 0 auto; white-space: nowrap;
+  border: 0; background: transparent; cursor: pointer;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-small); font-weight: var(--weight-regular);
+  color: var(--kbc-primary-150);
+  transition: background var(--duration) var(--ease),
+              color var(--duration) var(--ease);
+}
+.kbc-tab:hover { background: rgba(255, 255, 255, 0.10); color: #fff; }
+.kbc-tab[aria-selected="true"] { background: var(--kbc-accent); color: #fff; }
+
+.kbc-appbar__status {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-micro); color: var(--kbc-primary-150);
+}
+.kbc-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--kbc-success-300); }
+.kbc-dot--idle { background: var(--kbc-primary-200); }
+.kbc-dot--busy { background: var(--kbc-warning-300); animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: 0.3; } }
+
+/* ==========================================================================
+   Layout primitives
+   ========================================================================== */
+.page { flex: 1; padding: var(--space-6); }
+.page__inner { max-width: var(--desktop-max); margin: 0 auto; }
+.stack { display: flex; flex-direction: column; gap: var(--space-4); }
+.stack--sm { gap: var(--space-2); }
+.stack--lg { gap: var(--space-6); }
+.row { display: flex; align-items: center; gap: var(--space-3); }
+.row--between { justify-content: space-between; }
+.row--wrap { flex-wrap: wrap; }
+.spacer { flex: 1; }
+.grid { display: grid; gap: var(--space-4); }
+.grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid--sidebar { grid-template-columns: minmax(0, 1fr) 380px; align-items: start; }
+
+/* ==========================================================================
+   KbcCard
+   ========================================================================== */
+.kbc-card {
+  background: var(--kbc-surface);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-5);
+}
+.kbc-card--flat { box-shadow: none; border: 1px solid var(--kbc-border); }
+.kbc-card--tinted { background: var(--kbc-accent-25); box-shadow: none; }
+.kbc-card--dark {
+  background: var(--kbc-primary); color: var(--kbc-text-on-dark);
+}
+.kbc-card--dark .kbc-card__label,
+.kbc-card--dark .kbc-meta { color: var(--kbc-primary-150); }
+.kbc-card--pad-sm { padding: var(--space-4); }
+.kbc-card__header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: var(--space-3); margin-bottom: var(--space-4);
+}
+.kbc-card__title {
+  font-size: var(--text-h3); line-height: var(--text-h3-lh);
+  font-weight: var(--weight-bold);
+}
+.kbc-card__label {
+  font-size: var(--text-micro); line-height: var(--text-micro-lh);
+  text-transform: uppercase; letter-spacing: 0.07em;
+  font-weight: var(--weight-bold); color: var(--kbc-text-secondary);
+}
+.kbc-card__divider {
+  height: 1px; background: var(--kbc-divider);
+  margin: var(--space-4) calc(-1 * var(--space-5));
+}
+
+/* ==========================================================================
+   Typography helpers
+   ========================================================================== */
+.t-display { font-size: var(--text-display); line-height: var(--text-display-lh); font-weight: var(--weight-bold); }
+.t-h1 { font-size: var(--text-h1); line-height: var(--text-h1-lh); font-weight: var(--weight-bold); }
+.t-h2 { font-size: var(--text-h2); line-height: var(--text-h2-lh); font-weight: var(--weight-bold); }
+.t-h3 { font-size: var(--text-h3); line-height: var(--text-h3-lh); font-weight: var(--weight-bold); }
+.t-body { font-size: var(--text-body); line-height: var(--text-body-lh); }
+.t-small { font-size: var(--text-small); line-height: var(--text-small-lh); }
+.t-micro { font-size: var(--text-micro); line-height: var(--text-micro-lh); }
+.t-muted { color: var(--kbc-text-secondary); }
+.t-light { font-weight: var(--weight-light); }
+.t-bold { font-weight: var(--weight-bold); }
+.t-num { font-variant-numeric: tabular-nums; }
+.t-mono { font-family: var(--font-mono); font-size: var(--text-small); }
+.kbc-meta { font-size: var(--text-micro); color: var(--kbc-text-secondary); }
+
+/* ==========================================================================
+   Buttons - KBC's are fully rounded pills, 40px min height, weight 500
+   ========================================================================== */
+.kbc-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: var(--space-2);
+  min-height: 40px; padding: 7px var(--space-6);
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  font-size: var(--text-body); font-weight: var(--weight-regular);
+  cursor: pointer; text-align: center; white-space: nowrap;
+  transition: background var(--duration) var(--ease),
+              color var(--duration) var(--ease),
+              border-color var(--duration) var(--ease);
+  -webkit-appearance: none;
+}
+.kbc-btn--primary {
+  background: var(--kbc-accent); border-color: var(--kbc-accent); color: #fff;
+}
+.kbc-btn--primary:hover:not(:disabled) {
+  background: var(--kbc-accent-hover); border-color: var(--kbc-accent-hover);
+}
+.kbc-btn--secondary {
+  background: transparent; border-color: var(--kbc-accent); color: var(--kbc-accent);
+}
+.kbc-btn--secondary:hover:not(:disabled) {
+  border-color: var(--kbc-accent-hover); color: var(--kbc-accent-hover);
+  background: var(--kbc-accent-25);
+}
+.kbc-btn--ghost {
+  background: transparent; border-color: transparent; color: var(--kbc-text-secondary);
+  padding: 7px var(--space-3);
+}
+.kbc-btn--ghost:hover:not(:disabled) { background: var(--kbc-primary-25); color: var(--kbc-primary); }
+.kbc-btn--confirm { background: var(--kbc-success); border-color: var(--kbc-success); color: #fff; }
+.kbc-btn--block { width: 100%; }
+.kbc-btn--sm { min-height: 32px; padding: 4px var(--space-4); font-size: var(--text-small); }
+.kbc-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ==========================================================================
+   KbcStatusChip
+   ========================================================================== */
+.kbc-chip {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  padding: 3px var(--space-3);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-micro); line-height: var(--text-micro-lh);
+  font-weight: var(--weight-bold); white-space: nowrap;
+  background: var(--kbc-primary-25); color: var(--kbc-primary);
+}
+.kbc-chip--accent  { background: var(--kbc-accent-100);  color: var(--kbc-accent-hover); }
+.kbc-chip--success { background: var(--kbc-success-25);  color: var(--kbc-success); }
+.kbc-chip--warning { background: var(--kbc-warning-25);  color: var(--kbc-warning); }
+.kbc-chip--danger  { background: var(--kbc-danger-25);   color: var(--kbc-danger); }
+.kbc-chip--solid   { background: var(--kbc-accent);      color: #fff; }
+.kbc-chip--outline { background: transparent; color: var(--kbc-text-secondary);
+                     box-shadow: inset 0 0 0 1px var(--kbc-border); }
+
+/* provenance chips - the colour tells you what KIND of statement this is */
+.kbc-prov { display: inline-flex; align-items: center; gap: var(--space-1); }
+.kbc-prov--observed { background: var(--kbc-primary-25);  color: var(--kbc-primary); }
+.kbc-prov--derived  { background: var(--kbc-accent-25);   color: var(--kbc-accent-hover); }
+.kbc-prov--inferred { background: var(--kbc-warning-25);  color: var(--kbc-warning); }
+.kbc-prov--declared { background: var(--kbc-success-25);  color: var(--kbc-success); }
+
+/* ==========================================================================
+   KbcProgressBar
+   ========================================================================== */
+.kbc-progress {
+  height: 8px; border-radius: var(--radius-pill);
+  background: var(--kbc-primary-25); overflow: hidden;
+}
+.kbc-progress__fill {
+  height: 100%; border-radius: var(--radius-pill);
+  background: var(--kbc-accent);
+  transition: width var(--duration-slow) var(--ease);
+}
+.kbc-progress__fill--success { background: var(--kbc-success); }
+.kbc-progress__fill--warning { background: var(--kbc-warning); }
+.kbc-progress--lg { height: 12px; }
+
+/* confidence meter: segmented, so a probability never looks like a full bar */
+.kbc-confidence { display: flex; gap: 3px; align-items: center; }
+.kbc-confidence__seg {
+  width: 14px; height: 6px; border-radius: 2px; background: var(--kbc-primary-100);
+}
+.kbc-confidence__seg--on { background: var(--kbc-accent); }
+.kbc-confidence__seg--warn { background: var(--kbc-warning); }
+
+/* ==========================================================================
+   KbcInfoBanner
+   ========================================================================== */
+.kbc-banner {
+  display: flex; gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--kbc-accent-25);
+  border-left: 4px solid var(--kbc-accent);
+  font-size: var(--text-small); line-height: var(--text-small-lh);
+}
+.kbc-banner--warning { background: var(--kbc-warning-25); border-left-color: var(--kbc-warning); }
+.kbc-banner--success { background: var(--kbc-success-25); border-left-color: var(--kbc-success); }
+.kbc-banner--danger  { background: var(--kbc-danger-25);  border-left-color: var(--kbc-danger); }
+.kbc-banner--neutral { background: var(--kbc-primary-25); border-left-color: var(--kbc-primary-200); }
+.kbc-banner__icon { flex: 0 0 auto; font-size: var(--text-h3); line-height: 1; }
+
+/* ==========================================================================
+   Phone frame - the customer app is a mobile experience
+   ========================================================================== */
+.phone-stage {
+  display: flex; gap: var(--space-8); align-items: flex-start;
+  justify-content: center;
+}
+.phone {
+  position: relative; flex: 0 0 var(--phone-width);
+  width: var(--phone-width); height: var(--phone-height);
+  background: var(--kbc-background);
+  border-radius: 38px;
+  box-shadow: 0 0 0 10px #1b1d21, 0 24px 60px rgba(0, 54, 101, 0.28);
+  overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.phone__statusbar {
+  flex: 0 0 auto; height: 34px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 var(--space-5) 0 var(--space-6);
+  background: var(--kbc-primary); color: #fff;
+  font-size: var(--text-micro); font-weight: var(--weight-bold);
+}
+.phone__header {
+  flex: 0 0 auto;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  background: var(--kbc-primary); color: #fff;
+}
+.phone__scroll {
+  flex: 1; overflow-y: auto; overscroll-behavior: contain;
+  padding: var(--space-4) var(--space-4) var(--space-8);
+  display: flex; flex-direction: column; gap: var(--space-4);
+  scrollbar-width: thin;
+}
+.phone__scroll::-webkit-scrollbar { width: 5px; }
+.phone__scroll::-webkit-scrollbar-thumb {
+  background: var(--kbc-primary-100); border-radius: var(--radius-pill);
+}
+
+/* --- KbcBottomNavigation ------------------------------------------------- */
+.phone__nav {
+  flex: 0 0 auto; height: var(--bottomnav-height);
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  background: var(--kbc-surface);
+  box-shadow: var(--shadow-nav);
+  padding-bottom: var(--space-1);
+}
+.phone__nav button {
+  border: 0; background: transparent; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 3px;
+  font-size: var(--text-micro); font-weight: var(--weight-regular);
+  color: var(--kbc-text-secondary);
+  transition: color var(--duration) var(--ease);
+}
+.phone__nav button svg { width: 21px; height: 21px; }
+.phone__nav button[aria-selected="true"] { color: var(--kbc-accent); font-weight: var(--weight-bold); }
+
+/* ==========================================================================
+   Twin insight card (the hero card on the customer app)
+   ========================================================================== */
+.twin-hero {
+  background: linear-gradient(160deg, var(--kbc-primary) 0%, #123A6B 62%, #0E4E7E 100%);
+  color: #fff; border-radius: var(--radius-lg);
+  padding: var(--space-5); box-shadow: var(--shadow-raise);
+}
+.twin-hero__eyebrow {
+  font-size: var(--text-micro); text-transform: uppercase;
+  letter-spacing: 0.09em; font-weight: var(--weight-bold);
+  color: var(--kbc-channel-kate);
+}
+.twin-hero__phase {
+  font-size: var(--text-h1); line-height: var(--text-h1-lh);
+  font-weight: var(--weight-bold); margin-top: var(--space-1);
+}
+.twin-hero__conf { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-3); }
+.twin-hero__why {
+  margin-top: var(--space-4); width: 100%;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #fff; border-radius: var(--radius-pill);
+  min-height: 36px; font-size: var(--text-small);
+  display: flex; align-items: center; justify-content: center; gap: var(--space-2);
+  cursor: pointer; transition: background var(--duration) var(--ease);
+}
+.twin-hero__why:hover { background: rgba(255, 255, 255, 0.2); }
+.twin-hero__reasons {
+  margin-top: var(--space-3); padding-top: var(--space-3);
+  border-top: 1px solid rgba(255, 255, 255, 0.22);
+  display: flex; flex-direction: column; gap: var(--space-2);
+  font-size: var(--text-small); line-height: var(--text-small-lh);
+}
+.twin-hero__reasons li { display: flex; gap: var(--space-2); }
+.twin-hero__reasons li::before { content: "\2022"; color: var(--kbc-channel-kate); }
+
+/* Progress ring for the headline metric */
+.ring { position: relative; width: 74px; height: 74px; flex: 0 0 auto; }
+.ring svg { transform: rotate(-90deg); }
+.ring__track { stroke: rgba(255, 255, 255, 0.22); }
+.ring__fill { stroke: var(--kbc-channel-kate); transition: stroke-dashoffset var(--duration-slow) var(--ease); }
+.ring__value {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-size: var(--text-h3); font-weight: var(--weight-bold);
+}
+
+/* ==========================================================================
+   KbcGoalCard
+   ========================================================================== */
+.goal { display: flex; flex-direction: column; gap: var(--space-2); }
+.goal + .goal { margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--kbc-divider); }
+.goal__top { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.goal__amounts { font-size: var(--text-h3); font-weight: var(--weight-bold); font-variant-numeric: tabular-nums; }
+.goal__target { color: var(--kbc-text-secondary); font-weight: var(--weight-regular); font-size: var(--text-body); }
+.goal__foot { display: flex; justify-content: space-between; gap: var(--space-2); }
+
+/* ==========================================================================
+   KbcTimeline - Future Me
+   ========================================================================== */
+.timeline { position: relative; padding-left: var(--space-6); }
+.timeline::before {
+  content: ""; position: absolute; left: 7px; top: 6px; bottom: 6px;
+  width: 2px; background: var(--kbc-primary-100); border-radius: var(--radius-pill);
+}
+.tl-item { position: relative; padding-bottom: var(--space-5); }
+.tl-item:last-child { padding-bottom: 0; }
+.tl-item__dot {
+  position: absolute; left: calc(-1 * var(--space-6) + 2px); top: 4px;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--kbc-surface);
+  box-shadow: 0 0 0 3px var(--kbc-primary-100);
+}
+.tl-item--achieved .tl-item__dot { background: var(--kbc-success); box-shadow: 0 0 0 3px var(--kbc-success-25); }
+.tl-item--in_progress .tl-item__dot { background: var(--kbc-accent); box-shadow: 0 0 0 3px var(--kbc-accent-100); }
+.tl-item--projected .tl-item__dot { background: var(--kbc-surface); box-shadow: 0 0 0 3px var(--kbc-primary-150); }
+/* An uncertain life event is drawn dashed. Uncertainty is visible in the shape,
+   not only in the wording. */
+.tl-item--life_event .tl-item__dot {
+  background: var(--kbc-warning-25);
+  box-shadow: 0 0 0 2px var(--kbc-warning);
+  border: 2px dashed var(--kbc-warning);
+}
+.tl-item__year {
+  font-size: var(--text-micro); font-weight: var(--weight-bold);
+  letter-spacing: 0.06em; color: var(--kbc-text-secondary); text-transform: uppercase;
+}
+.tl-item__title { font-size: var(--text-body); font-weight: var(--weight-bold); margin-top: 2px; }
+.tl-item__detail { font-size: var(--text-small); color: var(--kbc-text-secondary); margin-top: 2px; }
+
+/* ==========================================================================
+   Pipeline visualiser
+   ========================================================================== */
+.pipe { display: flex; flex-direction: column; gap: var(--space-2); }
+.pipe__stage {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--kbc-primary-25);
+  opacity: 0.35;
+  transition: opacity var(--duration) var(--ease), background var(--duration) var(--ease);
+}
+.pipe__stage--active { opacity: 1; background: var(--kbc-accent-100); }
+.pipe__stage--done { opacity: 1; background: var(--kbc-surface-element); }
+.pipe__num {
+  flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--kbc-primary-100); color: var(--kbc-primary);
+  font-size: var(--text-micro); font-weight: var(--weight-bold);
+}
+.pipe__stage--done .pipe__num { background: var(--kbc-success); color: #fff; }
+.pipe__stage--active .pipe__num { background: var(--kbc-accent); color: #fff; }
+.pipe__body { min-width: 0; flex: 1; }
+.pipe__name { font-size: var(--text-small); font-weight: var(--weight-bold); }
+.pipe__detail { font-size: var(--text-micro); color: var(--kbc-text-secondary);
+                overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pipe__ms { font-size: var(--text-micro); font-variant-numeric: tabular-nums;
+            color: var(--kbc-text-secondary); flex: 0 0 auto; }
+
+/* highlight a value that just changed */
+@keyframes flash {
+  0%   { background: var(--kbc-warning-25); box-shadow: 0 0 0 6px var(--kbc-warning-25); }
+  100% { background: transparent; box-shadow: 0 0 0 0 transparent; }
+}
+.just-changed { animation: flash 1.8s var(--ease); border-radius: var(--radius-sm); }
+
+/* ==========================================================================
+   Demo controls
+   ========================================================================== */
+.demo-btns { display: flex; flex-direction: column; gap: var(--space-2); }
+.demo-btn {
+  display: flex; align-items: center; gap: var(--space-3); text-align: left;
+  width: 100%; padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md); cursor: pointer;
+  border: 1px solid var(--kbc-border); background: var(--kbc-surface);
+  transition: border-color var(--duration) var(--ease),
+              background var(--duration) var(--ease);
+}
+.demo-btn:hover:not(:disabled) { border-color: var(--kbc-accent); background: var(--kbc-accent-25); }
+.demo-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.demo-btn__icon {
+  flex: 0 0 auto; width: 32px; height: 32px; border-radius: var(--radius-sm);
+  display: grid; place-items: center;
+  background: var(--kbc-accent-100); color: var(--kbc-accent-hover);
+}
+.demo-btn__label { display: block; font-size: var(--text-small); font-weight: var(--weight-bold); }
+.demo-btn__hint { display: block; margin-top: 2px; font-size: var(--text-micro);
+                  line-height: var(--text-micro-lh); color: var(--kbc-text-secondary); }
+.demo-btn--primary { border-color: var(--kbc-accent); border-width: 2px; }
+
+/* ==========================================================================
+   Persona switcher
+   ========================================================================== */
+.persona-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.persona {
+  display: flex; gap: var(--space-3); align-items: center; text-align: left;
+  width: 100%; padding: var(--space-3);
+  border-radius: var(--radius-md); cursor: pointer;
+  border: 1px solid var(--kbc-border); background: var(--kbc-surface);
+  transition: all var(--duration) var(--ease);
+}
+.persona:hover { border-color: var(--kbc-accent); }
+.persona[aria-selected="true"] {
+  border-color: var(--kbc-accent); border-width: 2px; background: var(--kbc-accent-25);
+}
+.persona__avatar {
+  flex: 0 0 auto; width: 38px; height: 38px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--kbc-primary); color: #fff;
+  font-weight: var(--weight-bold); font-size: var(--text-small);
+}
+.persona__name { display: block; font-size: var(--text-small); font-weight: var(--weight-bold); }
+.persona__meta { display: block; margin-top: 2px; font-size: var(--text-micro);
+                 line-height: var(--text-micro-lh); color: var(--kbc-text-secondary); }
+
+/* ==========================================================================
+   Forms - KbcFormField
+   ========================================================================== */
+.field { display: flex; flex-direction: column; gap: var(--space-2); }
+.field__label { font-size: var(--text-small); font-weight: var(--weight-bold); }
+.field__help { font-size: var(--text-micro); color: var(--kbc-text-secondary); }
+.field input[type="text"], .field input[type="number"], .field select {
+  width: 100%; min-height: 44px;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--kbc-border);
+  background: var(--kbc-surface); color: var(--kbc-text-primary);
+  font: inherit; font-size: var(--text-body);
+  transition: border-color var(--duration) var(--ease);
+}
+.field input:focus, .field select:focus {
+  outline: none; border-color: var(--kbc-accent);
+  box-shadow: 0 0 0 3px var(--kbc-accent-25);
+}
+.segmented {
+  display: flex; padding: 3px; gap: 3px;
+  background: var(--kbc-primary-25); border-radius: var(--radius-pill);
+}
+.segmented button {
+  flex: 1; border: 0; background: transparent; cursor: pointer;
+  min-height: 34px; border-radius: var(--radius-pill);
+  font-size: var(--text-small); font-weight: var(--weight-regular);
+  color: var(--kbc-text-secondary);
+  transition: background var(--duration) var(--ease), color var(--duration) var(--ease);
+}
+.segmented button[aria-pressed="true"] {
+  background: var(--kbc-surface); color: var(--kbc-primary);
+  font-weight: var(--weight-bold); box-shadow: var(--shadow-card);
+}
+
+/* ==========================================================================
+   Advisor view (desktop, denser, same design language)
+   ========================================================================== */
+.advisor-grid { display: grid; grid-template-columns: 320px minmax(0, 1fr) 340px; gap: var(--space-4); align-items: start; }
+.fact-list { display: flex; flex-direction: column; }
+.fact {
+  display: flex; justify-content: space-between; gap: var(--space-3);
+  padding: var(--space-2) 0; font-size: var(--text-small);
+  border-bottom: 1px solid var(--kbc-divider);
+}
+.fact:last-child { border-bottom: 0; }
+.fact__label { color: var(--kbc-text-secondary); }
+.fact__value { font-weight: var(--weight-bold); font-variant-numeric: tabular-nums; text-align: right; }
+.signal-row {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3) 0; border-bottom: 1px solid var(--kbc-divider);
+}
+.signal-row:last-child { border-bottom: 0; }
+.signal-row__name { flex: 1; font-size: var(--text-small); font-weight: var(--weight-bold); }
+.signal-row--suppressed .signal-row__name { text-decoration: line-through; color: var(--kbc-text-disabled); }
+.signal-bar { flex: 0 0 90px; }
+.topic {
+  padding: var(--space-3); border-radius: var(--radius-sm);
+  background: var(--kbc-accent-25); font-size: var(--text-small);
+  border-left: 3px solid var(--kbc-accent);
+}
+.topic + .topic { margin-top: var(--space-2); }
+.topic__source { font-size: var(--text-micro); color: var(--kbc-text-secondary); margin-top: var(--space-1); }
+
+/* evidence list */
+.evidence { display: flex; flex-direction: column; gap: var(--space-1); margin-top: var(--space-2); }
+.evidence li {
+  display: flex; gap: var(--space-2); font-size: var(--text-micro);
+  line-height: var(--text-micro-lh); color: var(--kbc-text-secondary);
+}
+.evidence li::before { content: "\2014"; flex: 0 0 auto; }
+.evidence__weight { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/* ==========================================================================
+   Architecture / scale view
+   ========================================================================== */
+.arch-flow { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); }
+.arch-node {
+  width: 100%; max-width: 560px; padding: var(--space-4);
+  border-radius: var(--radius-md); background: var(--kbc-surface);
+  box-shadow: var(--shadow-card); text-align: center;
+}
+.arch-node--tier { border-left: 4px solid var(--kbc-accent); text-align: left; }
+.arch-node--twin { background: var(--kbc-primary); color: #fff; }
+.arch-node--channels { background: var(--kbc-accent-25); box-shadow: none; border: 1px dashed var(--kbc-border); }
+.arch-arrow { color: var(--kbc-primary-200); font-size: var(--text-h3); line-height: 1; }
+.arch-node__title { font-size: var(--text-body); font-weight: var(--weight-bold); }
+.arch-node__sub { font-size: var(--text-micro); color: var(--kbc-text-secondary); margin-top: 2px; }
+.arch-node--twin .arch-node__sub { color: var(--kbc-primary-150); }
+
+.channel-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: center; }
+.channel-chip {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-4); border-radius: var(--radius-pill);
+  background: var(--kbc-surface); box-shadow: var(--shadow-card);
+  font-size: var(--text-small); font-weight: var(--weight-bold);
+}
+.channel-chip__dot { width: 9px; height: 9px; border-radius: 50%; }
+
+.metric {
+  padding: var(--space-4); border-radius: var(--radius-md);
+  background: var(--kbc-surface); box-shadow: var(--shadow-card);
+}
+.metric__value { font-size: var(--text-display); line-height: var(--text-display-lh);
+                 font-weight: var(--weight-bold); font-variant-numeric: tabular-nums; }
+.metric__label { font-size: var(--text-micro); text-transform: uppercase;
+                 letter-spacing: 0.07em; color: var(--kbc-text-secondary);
+                 font-weight: var(--weight-bold); margin-top: var(--space-1); }
+.metric--accent .metric__value { color: var(--kbc-accent); }
+
+table.kbc-table { width: 100%; border-collapse: collapse; font-size: var(--text-small); }
+.kbc-table th {
+  text-align: left; padding: var(--space-2) var(--space-3);
+  font-size: var(--text-micro); text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--kbc-text-secondary); border-bottom: 1px solid var(--kbc-border);
+}
+.kbc-table td { padding: var(--space-3); border-bottom: 1px solid var(--kbc-divider); }
+.kbc-table tr:last-child td { border-bottom: 0; }
+.kbc-table td.t-num { font-variant-numeric: tabular-nums; }
+
+/* ==========================================================================
+   Sheet (Edit my Twin) - mobile bottom sheet
+   ========================================================================== */
+.sheet-backdrop {
+  position: absolute; inset: 0; z-index: 20;
+  background: rgba(13, 42, 80, 0.4);
+  display: flex; align-items: flex-end;
+  animation: fade var(--duration) var(--ease);
+}
+@keyframes fade { from { opacity: 0; } }
+.sheet {
+  width: 100%; max-height: 82%; overflow-y: auto;
+  background: var(--kbc-surface);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  box-shadow: var(--shadow-sheet);
+  padding: var(--space-5) var(--space-4) var(--space-6);
+  animation: rise var(--duration-slow) var(--ease);
+}
+@keyframes rise { from { transform: translateY(100%); } }
+.sheet__grip {
+  width: 38px; height: 4px; border-radius: var(--radius-pill);
+  background: var(--kbc-primary-100); margin: 0 auto var(--space-4);
+}
+
+/* ==========================================================================
+   Misc
+   ========================================================================== */
+.skeleton {
+  background: linear-gradient(90deg, var(--kbc-primary-25) 25%, var(--kbc-accent-25) 50%, var(--kbc-primary-25) 75%);
+  background-size: 200% 100%; animation: shimmer 1.4s infinite;
+  border-radius: var(--radius-sm); min-height: 14px;
+}
+@keyframes shimmer { to { background-position: -200% 0; } }
+.toast {
+  position: fixed; left: 50%; bottom: var(--space-6); transform: translateX(-50%);
+  z-index: 90; max-width: 460px;
+  padding: var(--space-3) var(--space-5); border-radius: var(--radius-pill);
+  background: var(--kbc-primary); color: #fff;
+  font-size: var(--text-small); box-shadow: var(--shadow-raise);
+  animation: rise var(--duration) var(--ease);
+}
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+@media (max-width: 1180px) {
+  .advisor-grid { grid-template-columns: minmax(0, 1fr); }
+  .grid--sidebar { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 900px) {
+  .grid--3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .phone-stage { flex-direction: column; align-items: center; }
+}
+@media (max-width: 640px) {
+  .page { padding: var(--space-4) var(--space-4) var(--space-8); }
+  .grid--2, .grid--3 { grid-template-columns: minmax(0, 1fr); }
+  .kbc-appbar { padding: 0 var(--space-4); gap: var(--space-3); }
+  .kbc-wordmark__sub, .kbc-appbar__status { display: none; }
+  .kbc-tab { padding: var(--space-2) var(--space-4); font-size: var(--text-small); }
+  .kbc-tab__long { display: none; }
+  .kbc-tab__short { display: inline; }
+  .kbc-wordmark { font-size: var(--text-small); gap: var(--space-2); }
+  /* On a real phone, drop the phone frame and go full-bleed. */
+  .phone {
+    flex: 1 1 auto; width: 100%; max-width: 100%; height: auto;
+    min-height: calc(100vh - var(--header-height) - var(--space-12));
+    border-radius: var(--radius-lg); box-shadow: var(--shadow-card);
+  }
+  .phone__statusbar { display: none; }
+}
